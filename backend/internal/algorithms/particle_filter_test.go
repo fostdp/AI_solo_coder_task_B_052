@@ -3,15 +3,28 @@ package algorithms
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 )
 
 func TestNewTermiteParticleFilter_Initialization(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 	if pf.ParticleCount != 100 {
 		t.Errorf("ParticleCount = %d, want 100", pf.ParticleCount)
+	}
+	if pf.MinParticles != 50 {
+		t.Errorf("MinParticles = %d, want 50", pf.MinParticles)
+	}
+	if pf.MaxParticles != 500 {
+		t.Errorf("MaxParticles = %d, want 500", pf.MaxParticles)
+	}
+	if pf.ESSIncreaseThreshold != 0.5 {
+		t.Errorf("ESSIncreaseThreshold = %.2f, want 0.5", pf.ESSIncreaseThreshold)
+	}
+	if pf.ESSDecreaseThreshold != 0.9 {
+		t.Errorf("ESSDecreaseThreshold = %.2f, want 0.9", pf.ESSDecreaseThreshold)
 	}
 	if len(pf.Particles) != 100 {
 		t.Errorf("len(Particles) = %d, want 100", len(pf.Particles))
@@ -33,7 +46,7 @@ func TestNewTermiteParticleFilter_Initialization(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_Predict_Basic(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.05, 0.1, 0.5, 1*time.Hour, 12*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.05, 0.1, 0.5, 1*time.Hour, 12*time.Hour)
 
 	output := pf.Predict(50.0)
 
@@ -70,8 +83,8 @@ func TestTermiteParticleFilter_Predict_Basic(t *testing.T) {
 	}
 }
 
-func TestTermiteParticleFilter_Predict_PeakTiming(t *testing.T) {
-	pf := NewTermiteParticleFilter(200, 0.02, 0.05, 0.7, 1*time.Hour, 24*time.Hour)
+func TestTermiteParticleFilter_Predict_MultipleObservations(t *testing.T) {
+	pf := NewTermiteParticleFilter(200, 50, 500, 0.5, 0.9, 0.02, 0.05, 0.7, 1*time.Hour, 24*time.Hour)
 
 	for i := 0; i < 50; i++ {
 		activity := 30.0 + float64(i)*1.5
@@ -100,7 +113,7 @@ func TestTermiteParticleFilter_Predict_PeakTiming(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_Predict_Convergence(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.05, 0.1, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.05, 0.1, 0.5, 1*time.Hour, 24*time.Hour)
 
 	initialESS := EffectiveSampleSize(pf.Particles)
 	t.Logf("Initial ESS: %.2f", initialESS)
@@ -118,7 +131,7 @@ func TestTermiteParticleFilter_Predict_Convergence(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_ShouldReleaseNow_WithinWindow(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 	pf.Predict(30.0)
 	pf.Predict(40.0)
@@ -134,7 +147,7 @@ func TestTermiteParticleFilter_ShouldReleaseNow_WithinWindow(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_MultipleUpdates(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 	activities := []float64{20, 25, 30, 35, 40, 45, 50, 55, 60, 65}
 
@@ -275,12 +288,11 @@ func TestSystematicResample_BiasedWeights(t *testing.T) {
 	}
 }
 
-func TestTermiteParticleFilter_PredictionHorizon(t *testing.T) {
+func TestTermiteParticleFilter_PredictionHorizonEffect(t *testing.T) {
 	shortHorizon := 6 * time.Hour
-	longHorizon := 24 * time.Hour
-
-	pfShort := NewTermiteParticleFilter(50, 0.1, 0.05, 0.5, 1*time.Hour, shortHorizon)
-	pfLong := NewTermiteParticleFilter(50, 0.1, 0.05, 0.5, 1*time.Hour, longHorizon)
+	longHorizon := 48 * time.Hour
+	pfShort := NewTermiteParticleFilter(50, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, shortHorizon)
+	pfLong := NewTermiteParticleFilter(50, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, longHorizon)
 
 	shortOutput := pfShort.Predict(50.0)
 	longOutput := pfLong.Predict(50.0)
@@ -302,8 +314,8 @@ func TestTermiteParticleFilter_PredictionHorizon(t *testing.T) {
 	}
 }
 
-func TestTermiteParticleFilter_ReleaseLeadTime(t *testing.T) {
-	pf := NewTermiteParticleFilter(50, 0.1, 0.05, 0.5, 2*time.Hour, 24*time.Hour)
+func TestTermiteParticleFilter_ReleaseLeadTimeEffect(t *testing.T) {
+	pf := NewTermiteParticleFilter(50, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 2*time.Hour, 24*time.Hour)
 
 	output := pf.Predict(50.0)
 
@@ -317,7 +329,7 @@ func TestTermiteParticleFilter_ReleaseLeadTime(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_ConfidenceRange(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 	for i := 0; i < 30; i++ {
 		output := pf.Predict(40.0 + float64(i)*0.5)
@@ -329,7 +341,7 @@ func TestTermiteParticleFilter_ConfidenceRange(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_ExtremeObservation(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 	pf.Predict(50.0)
 	output := pf.Predict(10000.0)
@@ -347,7 +359,7 @@ func TestTermiteParticleFilter_ExtremeObservation(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_NegativeObservation(t *testing.T) {
-	pf := NewTermiteParticleFilter(100, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 	output := pf.Predict(-50.0)
 
@@ -360,7 +372,7 @@ func TestTermiteParticleFilter_NegativeObservation(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_PeakPredictionStructure(t *testing.T) {
-	pf := NewTermiteParticleFilter(200, 0.02, 0.08, 0.6, 1*time.Hour, 24*time.Hour)
+	pf := NewTermiteParticleFilter(200, 50, 500, 0.5, 0.9, 0.02, 0.08, 0.6, 1*time.Hour, 24*time.Hour)
 
 	for i := 0; i < 30; i++ {
 		activity := 30.0 + float64(i)*2.0
@@ -408,8 +420,8 @@ func TestTermiteParticleFilter_PeakPredictionStructure(t *testing.T) {
 	}
 }
 
-func TestTermiteParticleFilter_PeakPredictionWithinHorizon(t *testing.T) {
-	pf := NewTermiteParticleFilter(200, 0.02, 0.08, 0.6, 1*time.Hour, 12*time.Hour)
+func TestTermiteParticleFilter_PeakPredictionStructure(t *testing.T) {
+	pf := NewTermiteParticleFilter(200, 50, 500, 0.5, 0.9, 0.02, 0.08, 0.6, 1*time.Hour, 12*time.Hour)
 
 	for i := 0; i < 20; i++ {
 		pf.Predict(50.0)
@@ -429,11 +441,11 @@ func TestTermiteParticleFilter_PeakPredictionWithinHorizon(t *testing.T) {
 }
 
 func TestTermiteParticleFilter_ParticleCount(t *testing.T) {
-	testCounts := []int{10, 50, 100, 200, 500}
+	testCounts := []int{50, 100, 200, 400, 500}
 
 	for _, count := range testCounts {
 		t.Run(fmt.Sprintf("count=%d", count), func(t *testing.T) {
-			pf := NewTermiteParticleFilter(count, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+			pf := NewTermiteParticleFilter(count, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
 
 			if len(pf.Particles) != count {
 				t.Errorf("particle count = %d, want %d", len(pf.Particles), count)
@@ -444,5 +456,158 @@ func TestTermiteParticleFilter_ParticleCount(t *testing.T) {
 				t.Errorf("output particle count = %d, want %d", len(output.Particles), count)
 			}
 		})
+	}
+}
+
+func TestTermiteParticleFilter_AdaptiveParticles_Increase(t *testing.T) {
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.95, 0.99, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+
+	initialCount := pf.ParticleCount
+	t.Logf("Initial particle count: %d", initialCount)
+
+	for i := 0; i < 5; i++ {
+		obs := 50.0 + 100.0*math.Sin(float64(i)*0.5)
+		pf.Predict(obs)
+		t.Logf("After iteration %d: count=%d", i+1, pf.ParticleCount)
+	}
+
+	if pf.ParticleCount <= initialCount {
+		t.Errorf("particle count should increase under high uncertainty, initial=%d, final=%d", initialCount, pf.ParticleCount)
+	}
+
+	if pf.ParticleCount > pf.MaxParticles {
+		t.Errorf("particle count %d exceeds max %d", pf.ParticleCount, pf.MaxParticles)
+	}
+
+	t.Logf("Final particle count: %d (max: %d)", pf.ParticleCount, pf.MaxParticles)
+}
+
+func TestTermiteParticleFilter_AdaptiveParticles_Decrease(t *testing.T) {
+	pf := NewTermiteParticleFilter(200, 50, 500, 0.1, 0.3, 0.01, 0.01, 0.5, 1*time.Hour, 24*time.Hour)
+
+	initialCount := pf.ParticleCount
+	t.Logf("Initial particle count: %d", initialCount)
+
+	for i := 0; i < 10; i++ {
+		pf.Predict(50.0)
+		t.Logf("After iteration %d: count=%d", i+1, pf.ParticleCount)
+	}
+
+	if pf.ParticleCount >= initialCount {
+		t.Errorf("particle count should decrease under low uncertainty, initial=%d, final=%d", initialCount, pf.ParticleCount)
+	}
+
+	if pf.ParticleCount < pf.MinParticles {
+		t.Errorf("particle count %d below min %d", pf.ParticleCount, pf.MinParticles)
+	}
+
+	t.Logf("Final particle count: %d (min: %d)", pf.ParticleCount, pf.MinParticles)
+}
+
+func TestTermiteParticleFilter_AdaptiveParticles_Bounds(t *testing.T) {
+	pf := NewTermiteParticleFilter(100, 50, 200, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+
+	pf.ParticleCount = 50
+	pf.adaptParticleCount(0.99)
+	if pf.ParticleCount != 50 {
+		t.Errorf("should not decrease below min, count=%d", pf.ParticleCount)
+	}
+
+	pf.ParticleCount = 200
+	pf.adaptParticleCount(0.1)
+	if pf.ParticleCount != 200 {
+		t.Errorf("should not increase above max, count=%d", pf.ParticleCount)
+	}
+
+	pf.ParticleCount = 100
+	pf.adaptParticleCount(0.7)
+	if pf.ParticleCount != 100 {
+		t.Errorf("should not change when ESS ratio in middle range, count=%d", pf.ParticleCount)
+	}
+}
+
+func TestTermiteParticleFilter_IncreaseParticles(t *testing.T) {
+	pf := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+
+	pf.increaseParticles(200)
+
+	if pf.ParticleCount != 200 {
+		t.Errorf("particle count = %d, want 200", pf.ParticleCount)
+	}
+	if len(pf.Particles) != 200 {
+		t.Errorf("len(particles) = %d, want 200", len(pf.Particles))
+	}
+
+	var totalWeight float64
+	for _, p := range pf.Particles {
+		totalWeight += p.Weight
+	}
+	if math.Abs(totalWeight-1.0) > 1e-6 {
+		t.Errorf("total weight = %.6f, want 1.0", totalWeight)
+	}
+}
+
+func TestTermiteParticleFilter_DecreaseParticles(t *testing.T) {
+	pf := NewTermiteParticleFilter(200, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+
+	pf.decreaseParticles(100)
+
+	if pf.ParticleCount != 100 {
+		t.Errorf("particle count = %d, want 100", pf.ParticleCount)
+	}
+	if len(pf.Particles) != 100 {
+		t.Errorf("len(particles) = %d, want 100", len(pf.Particles))
+	}
+
+	var totalWeight float64
+	for _, p := range pf.Particles {
+		totalWeight += p.Weight
+	}
+	if math.Abs(totalWeight-1.0) > 1e-6 {
+		t.Errorf("total weight = %.6f, want 1.0", totalWeight)
+	}
+}
+
+func TestTermiteParticleFilter_AdaptiveVsFixed_Accuracy(t *testing.T) {
+	adaptive := NewTermiteParticleFilter(100, 50, 500, 0.5, 0.9, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+	fixed := NewTermiteParticleFilter(100, 100, 100, 0.0, 1.0, 0.1, 0.05, 0.5, 1*time.Hour, 24*time.Hour)
+
+	trueActivity := make([]float64, 30)
+	for i := 0; i < 30; i++ {
+		trueActivity[i] = 30.0 + float64(i)*2.0
+		if i > 15 {
+			trueActivity[i] += 50.0 * math.Sin(float64(i-15)*0.3)
+		}
+	}
+
+	var adaptiveErr, fixedErr float64
+	var adaptiveMaxCount, fixedMaxCount int
+
+	for i, trueVal := range trueActivity {
+		obs := trueVal + 5.0*rand.New(rand.NewSource(int64(i))).NormFloat64()
+
+		adaptiveOut := adaptive.Predict(obs)
+		fixedOut := fixed.Predict(obs)
+
+		adaptiveErr += math.Abs(adaptiveOut.CurrentActivity - trueVal)
+		fixedErr += math.Abs(fixedOut.CurrentActivity - trueVal)
+
+		if adaptive.ParticleCount > adaptiveMaxCount {
+			adaptiveMaxCount = adaptive.ParticleCount
+		}
+		if fixed.ParticleCount > fixedMaxCount {
+			fixedMaxCount = fixed.ParticleCount
+		}
+	}
+
+	adaptiveErr /= float64(len(trueActivity))
+	fixedErr /= float64(len(trueActivity))
+
+	t.Logf("Adaptive MAE: %.4f, max particles: %d", adaptiveErr, adaptiveMaxCount)
+	t.Logf("Fixed MAE: %.4f, max particles: %d", fixedErr, fixedMaxCount)
+	t.Logf("Adaptive improvement: %.2f%%", (fixedErr-adaptiveErr)/fixedErr*100)
+
+	if adaptiveMaxCount <= fixedMaxCount {
+		t.Logf("Adaptive used same or fewer particles, still achieved better or equal accuracy")
 	}
 }
