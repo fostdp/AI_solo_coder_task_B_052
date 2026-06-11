@@ -15,8 +15,10 @@ const (
 	MsgTypeDeduplicated
 	MsgTypeProcessedSensor
 	MsgTypeTermitePrediction
+	MsgTypeTDOAStrength
 	MsgTypeFumigantDiffusion
 	MsgTypeAlert
+	MsgTypeBirdActivity
 )
 
 type Metadata struct {
@@ -162,4 +164,20 @@ type FumigantOutput struct {
 type AlertOutput struct {
 	Alert models.Alert
 	Channels []string
+}
+
+type TDOAStrengthOutput struct {
+	TunnelNetwork    models.TunnelNetwork
+	StrengthResults  []models.WoodStrengthAssessment
+	SensorID         string
+	Building         string
+	Location         string
+	RiskLevel        string
+	ParticleFilter   *models.ParticleFilterOutput
+}
+
+type BirdActivityOutput struct {
+	BirdData         []models.BirdRadarData
+	DeterrentActions []models.DeterrentAction
+	Building         string
 }
