@@ -78,14 +78,19 @@ strength:
   critical_energy: 50000.0
   required_safety_factor: 1.5
   depth_ratio_default: 0.3
+  default_wood_type: pine
 
 particle_filter:
-  particle_count: 100
+  min_particles: 50
+  max_particles: 500
+  initial_particles: 100
   prediction_horizon: 24h
   release_lead_time: 1h
   process_noise: 0.1
   measurement_noise: 0.05
   resample_threshold: 0.5
+  ess_increase_threshold: 0.5
+  ess_decrease_threshold: 0.9
 
 bird_deterrent:
   radar_scan_interval: 30s
