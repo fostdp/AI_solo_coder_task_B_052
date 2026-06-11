@@ -51,7 +51,7 @@ func (s *FumigantDiffusionService) Start(ctx context.Context, in <-chan pipeline
 				return nil
 			}
 
-			if msg.Type != pipeline.MsgTypeTermitePrediction {
+			if msg.Type != pipeline.MsgTypeTermitePrediction && msg.Type != pipeline.MsgTypeTDOAStrength {
 				out <- msg
 				continue
 			}
@@ -71,9 +71,28 @@ func (s *FumigantDiffusionService) Start(ctx context.Context, in <-chan pipeline
 }
 
 func (s *FumigantDiffusionService) process(ctx context.Context, msg *pipeline.PipelineMessage) (*pipeline.PipelineMessage, error) {
-	termiteData, ok := msg.Data.(pipeline.TermiteOutput)
-	if !ok {
-		return msg, nil
+	var termiteData pipeline.TermiteOutput
+
+	if msg.Type == pipeline.MsgTypeTDOAStrength {
+		tdoaData, ok := msg.Data.(pipeline.TDOAStrengthOutput)
+		if !ok {
+			return msg, nil
+		}
+		termiteData = pipeline.TermiteOutput{
+			SensorID:     tdoaData.SensorID,
+			Building:     tdoaData.Building,
+			Location:     tdoaData.Location,
+			RiskLevel:    tdoaData.RiskLevel,
+		}
+		if tdoaData.ParticleFilter != nil && tdoaData.ParticleFilter.ShouldReleaseNow {
+			termiteData.RiskLevel = "critical"
+		}
+	} else {
+		var ok bool
+		termiteData, ok = msg.Data.(pipeline.TermiteOutput)
+		if !ok {
+			return msg, nil
+		}
 	}
 
 	if termiteData.RiskLevel != "high" && termiteData.RiskLevel != "critical" {
