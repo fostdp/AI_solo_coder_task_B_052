@@ -1,0 +1,40 @@
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+vendor/
+go.sum.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI
+.github/
+.travis.yml
+.gitlab-ci.yml
+
+# Docs (except required)
+README.md
+
+# Local config
+config/local.yaml
+config/.env
+*.local
+
+# Logs
+*.log
+logs/
