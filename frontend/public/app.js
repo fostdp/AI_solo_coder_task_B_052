@@ -10,6 +10,8 @@ class AncientWoodMonitor {
         this.sensorsGroup = null;
         this.riskVoxels = null;
         this.concentrationGroup = null;
+        this.tunnelNetwork = null;
+        this.birdRadar = null;
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         this.selectedObject = null;
@@ -17,10 +19,17 @@ class AncientWoodMonitor {
         this.showSensors = true;
         this.showRisk = true;
         this.showConcentration = false;
+        this.showTunnel = true;
+        this.showBirds = false;
 
         this.sensorData = {};
         this.riskZones = [];
         this.alerts = [];
+        this.tunnelData = null;
+        this.strengthData = [];
+        this.particleFilterData = null;
+        this.birdData = [];
+        this.deterrentStatus = null;
 
         this.chart = null;
         this.chartType = 'acoustic';
@@ -34,6 +43,8 @@ class AncientWoodMonitor {
         this.createBuilding();
         this.createSensors();
         this.createRiskVoxels();
+        this.createTunnelNetwork();
+        this.createBirdRadar();
         this.setupEventListeners();
         this.loadData();
         this.setupChart();
@@ -555,6 +566,29 @@ class AncientWoodMonitor {
         this.riskVoxels.updateRiskZones(this.riskZones);
     }
 
+    createTunnelNetwork() {
+        if (this.tunnelNetwork) {
+            this.tunnelNetwork.dispose();
+        }
+        this.tunnelNetwork = new TunnelNetwork(this.scene, {
+            nodeSize: 0.3,
+            activeColor: 0xff6b6b,
+            inactiveColor: 0x666666,
+            edgeColor: 0xff9944
+        });
+        this.tunnelNetwork.setVisible(this.showTunnel);
+    }
+
+    createBirdRadar() {
+        if (this.birdRadar) {
+            this.birdRadar.dispose();
+        }
+        this.birdRadar = new BirdRadarOverlay(this.scene, {
+            scanRadius: 50
+        });
+        this.birdRadar.setVisible(this.showBirds);
+    }
+
     _getRiskColor(riskLevel) {
         switch (riskLevel) {
             case 'critical': return new THREE.Color(1, 0.28, 0.34);
@@ -759,6 +793,26 @@ class AncientWoodMonitor {
             this.startFumigation();
         });
 
+        document.getElementById('btn-show-tunnel').addEventListener('click', (e) => {
+            this.showTunnel = !this.showTunnel;
+            e.target.classList.toggle('primary', this.showTunnel);
+            if (this.tunnelNetwork) {
+                this.tunnelNetwork.setVisible(this.showTunnel);
+            }
+        });
+
+        document.getElementById('btn-show-birds').addEventListener('click', (e) => {
+            this.showBirds = !this.showBirds;
+            e.target.classList.toggle('primary', this.showBirds);
+            if (this.birdRadar) {
+                this.birdRadar.setVisible(this.showBirds);
+            }
+        });
+
+        document.getElementById('btn-bird-deterrent').addEventListener('click', () => {
+            this.triggerBirdDeterrent();
+        });
+
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -901,6 +955,8 @@ class AncientWoodMonitor {
             this.createBuilding();
             this.createSensors();
             this.createRiskVoxels();
+            this.createTunnelNetwork();
+            this.createBirdRadar();
             this.loadData();
         }, 300);
     }
@@ -982,7 +1038,11 @@ class AncientWoodMonitor {
         await Promise.all([
             this.loadAlerts(),
             this.loadRiskZones(),
-            this.loadSensorStats()
+            this.loadSensorStats(),
+            this.loadTunnelNetwork(),
+            this.loadStrengthAssessment(),
+            this.loadFumigationTiming(),
+            this.loadBirdRadar()
         ]);
         this.updateStats();
     }
@@ -1056,6 +1116,104 @@ class AncientWoodMonitor {
             document.getElementById('acoustic-count').textContent = acoustic.length + '台';
             document.getElementById('moisture-count').textContent = moisture.length + '台';
             document.getElementById('online-count').textContent = online.length + '台';
+        }
+    }
+
+    async loadTunnelNetwork() {
+        const data = await this.apiRequest(`/tdoa/tunnel-network?building=${encodeURIComponent(this.currentBuilding)}`);
+        if (data && data.tunnel_network) {
+            this.tunnelData = data.tunnel_network;
+            if (this.tunnelNetwork) {
+                this.tunnelNetwork.updateFromAPI(this.tunnelData);
+            }
+            const nodes = this.tunnelData.nodes || [];
+            const activeNodes = nodes.filter(n => n.active);
+            document.getElementById('tunnel-nodes').textContent = nodes.length;
+            document.getElementById('tunnel-active').textContent = activeNodes.length;
+            document.getElementById('tunnel-edges').textContent = (this.tunnelData.edges || []).length;
+        }
+    }
+
+    async loadStrengthAssessment() {
+        const data = await this.apiRequest(`/strength/assessment?building=${encodeURIComponent(this.currentBuilding)}`);
+        if (data && data.assessments) {
+            this.strengthData = data.assessments;
+            const safe = this.strengthData.filter(a => a.strength_level === 'safe' || a.strength_level === 'caution').length;
+            const danger = this.strengthData.filter(a => a.strength_level === 'danger' || a.strength_level === 'critical').length;
+            const avgSF = this.strengthData.length > 0
+                ? (this.strengthData.reduce((sum, a) => sum + a.safety_factor, 0) / this.strengthData.length).toFixed(2)
+                : '-';
+            document.getElementById('strength-safe').textContent = safe;
+            document.getElementById('strength-danger').textContent = danger;
+            document.getElementById('strength-avg-sf').textContent = avgSF;
+        }
+    }
+
+    async loadFumigationTiming() {
+        const data = await this.apiRequest(`/fumigation/timing?building=${encodeURIComponent(this.currentBuilding)}`);
+        if (data && data.particle_filter) {
+            this.particleFilterData = data.particle_filter;
+            const pf = this.particleFilterData;
+            if (pf.predicted_peak_time) {
+                const peakTime = new Date(pf.predicted_peak_time);
+                document.getElementById('pf-peak').textContent = peakTime.getHours() + ':' + String(peakTime.getMinutes()).padStart(2, '0');
+            }
+            if (pf.optimal_release_time) {
+                const releaseTime = new Date(pf.optimal_release_time);
+                document.getElementById('pf-release').textContent = releaseTime.getHours() + ':' + String(releaseTime.getMinutes()).padStart(2, '0');
+                const el = document.getElementById('pf-release');
+                if (pf.should_release_now) {
+                    el.classList.add('critical');
+                    el.classList.remove('warning', 'info');
+                }
+            }
+            if (pf.confidence !== undefined) {
+                document.getElementById('pf-confidence').textContent = (pf.confidence * 100).toFixed(0) + '%';
+            }
+        }
+    }
+
+    async loadBirdRadar() {
+        const data = await this.apiRequest(`/bird/radar?building=${encodeURIComponent(this.currentBuilding)}`);
+        if (data && data.scan_data) {
+            this.birdData = data.scan_data;
+            if (this.birdRadar) {
+                this.birdRadar.updateBirds(this.birdData);
+            }
+            const woodpeckers = this.birdData.filter(b => b.bird_type === 'woodpecker').length;
+            document.getElementById('bird-count').textContent = this.birdData.length;
+            document.getElementById('bird-woodpecker').textContent = woodpeckers;
+        }
+
+        const statusData = await this.apiRequest(`/bird/deterrent/status?building=${encodeURIComponent(this.currentBuilding)}`);
+        if (statusData) {
+            this.deterrentStatus = statusData;
+            const activeDeterrents = statusData.active_deterrents || [];
+            const statusEl = document.getElementById('bird-deterrent-status');
+            if (activeDeterrents.length > 0) {
+                statusEl.textContent = '驱赶中';
+                statusEl.classList.add('warning');
+            } else {
+                statusEl.textContent = '待机';
+                statusEl.classList.remove('warning');
+            }
+        }
+    }
+
+    async triggerBirdDeterrent() {
+        const data = await this.apiRequest('/bird/deterrent/trigger', {
+            method: 'POST',
+            body: JSON.stringify({
+                building: this.currentBuilding,
+                deterrent_type: 'ultrasonic'
+            })
+        });
+        if (data) {
+            if (this.birdRadar) {
+                this.birdRadar.showDeterrentZone(this.currentBuilding, 'ultrasonic');
+            }
+            document.getElementById('bird-deterrent-status').textContent = '驱赶中';
+            alert('超声波驱鸟装置已启动！');
         }
     }
 
@@ -1237,6 +1395,14 @@ class AncientWoodMonitor {
 
         if (this.riskVoxels && this.showRisk) {
             this.riskVoxels.update(delta);
+        }
+
+        if (this.tunnelNetwork && this.showTunnel) {
+            this.tunnelNetwork.update(delta);
+        }
+
+        if (this.birdRadar && this.showBirds) {
+            this.birdRadar.update(delta);
         }
 
         if (this.sensorsGroup && this.showSensors) {
