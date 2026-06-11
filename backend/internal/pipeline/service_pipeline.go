@@ -10,15 +10,17 @@ import (
 	fumigant "ancient-wood-monitor/internal/services/fumigant_diffusion"
 	loraingest "ancient-wood-monitor/internal/services/lora_ingest"
 	termitelstm "ancient-wood-monitor/internal/services/termite_lstm"
+	tdoastrength "ancient-wood-monitor/internal/services/tdoa_strength"
 )
 
 type ServicePipeline struct {
 	pipeline *Pipeline
 
-	LoRaIngest       *loraingest.LoRaIngestService
-	TermiteLSTM      *termitelstm.TermiteLSTMService
+	LoRaIngest        *loraingest.LoRaIngestService
+	TermiteLSTM       *termitelstm.TermiteLSTMService
+	TDOAStrength      *tdoastrength.TDOAStrengthService
 	FumigantDiffusion *fumigant.FumigantDiffusionService
-	Alerter          *alerter.AlertService
+	Alerter           *alerter.AlertService
 
 	Input  chan<- PipelineMessage
 	Output <-chan PipelineMessage
@@ -44,6 +46,24 @@ func NewServicePipeline(cfg *config.Config) (*ServicePipeline, error) {
 		ConsecutiveConfirm:  cfg.Pipeline.TermiteLSTM.ConsecutiveConfirm,
 		PredictionHours:     cfg.Pipeline.TermiteLSTM.PredictionHours,
 		ModelPath:           cfg.Model.LstmPath,
+	})
+
+	sp.TDOAStrength = tdoastrength.NewService(tdoastrength.Config{
+		SoundSpeedWood:      cfg.TDOA.SoundSpeedWood,
+		MinSensors:          cfg.TDOA.MinSensors,
+		NodeMergeDistance:    cfg.TDOA.NodeMergeDistance,
+		EdgeMaxDistance:      cfg.TDOA.EdgeMaxDistance,
+		MaxNodes:            cfg.TDOA.MaxNodesPerBuilding,
+		ReferenceDensity:    cfg.Strength.ReferenceDensity,
+		CriticalEnergy:      cfg.Strength.CriticalEnergy,
+		RequiredSafetyFactor: cfg.Strength.RequiredSafetyFactor,
+		DepthRatioDefault:   cfg.Strength.DepthRatioDefault,
+		ParticleCount:       cfg.ParticleFilter.ParticleCount,
+		ProcessNoise:        cfg.ParticleFilter.ProcessNoise,
+		MeasurementNoise:    cfg.ParticleFilter.MeasurementNoise,
+		ResampleThreshold:   cfg.ParticleFilter.ResampleThreshold,
+		ReleaseLeadTime:     cfg.ParticleFilter.ReleaseLeadTime,
+		PredictionHorizon:   cfg.ParticleFilter.PredictionHorizon,
 	})
 
 	sp.FumigantDiffusion = fumigant.NewService(fumigant.Config{
@@ -72,6 +92,7 @@ func NewServicePipeline(cfg *config.Config) (*ServicePipeline, error) {
 	sp.pipeline = NewPipeline(
 		sp.LoRaIngest,
 		sp.TermiteLSTM,
+		sp.TDOAStrength,
 		sp.FumigantDiffusion,
 		sp.Alerter,
 	)
@@ -90,7 +111,7 @@ func (sp *ServicePipeline) Start(ctx context.Context) error {
 	sp.wg.Add(1)
 	go sp.outputDrainer(ctx)
 
-	log.Println("[Pipeline] all 4 stages started: lora_ingest -> termite_lstm -> fumigant_diffusion -> alerter")
+	log.Println("[Pipeline] all 5 stages started: lora_ingest -> termite_lstm -> tdoa_strength -> fumigant_diffusion -> alerter")
 	return nil
 }
 
@@ -123,6 +144,7 @@ func (sp *ServicePipeline) Stats() map[string]interface{} {
 	return map[string]interface{}{
 		"lora_ingest":        sp.LoRaIngest.Stats(),
 		"termite_lstm":       map[string]interface{}{},
+		"tdoa_strength":      map[string]interface{}{},
 		"fumigant_diffusion": map[string]interface{}{},
 		"alerter":            sp.Alerter.Stats(),
 	}
