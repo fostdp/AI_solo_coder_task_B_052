@@ -65,3 +65,33 @@ pipeline:
     cooldown_period: 10m
     enable_wechat: false
     enable_sms: false
+
+tdoa:
+  sound_speed_wood: 3300.0
+  min_sensors: 4
+  node_merge_distance: 0.5
+  edge_max_distance: 3.0
+  max_nodes_per_building: 100
+
+strength:
+  reference_density: 450.0
+  critical_energy: 50000.0
+  required_safety_factor: 1.5
+  depth_ratio_default: 0.3
+
+particle_filter:
+  particle_count: 100
+  prediction_horizon: 24h
+  release_lead_time: 1h
+  process_noise: 0.1
+  measurement_noise: 0.05
+  resample_threshold: 0.5
+
+bird_deterrent:
+  radar_scan_interval: 30s
+  woodpecker_threshold: 3
+  deterrent_duration: 10m
+  cooldown_period: 30m
+  enable_ultrasonic: true
+  enable_predator_call: true
+  simulation_speed: 1.0
