@@ -11,6 +11,10 @@ import (
 	"ancient-wood-monitor/internal/algorithms"
 	"ancient-wood-monitor/internal/models"
 	"ancient-wood-monitor/internal/pipeline"
+
+	tdoa "github.com/ancient-wood/tdoa_locator"
+	strength "github.com/ancient-wood/strength_calc"
+	pf "github.com/ancient-wood/particle_filter_timing"
 )
 
 type Config struct {
@@ -38,9 +42,9 @@ type Config struct {
 
 type TDOAStrengthService struct {
 	cfg            Config
-	locator        *algorithms.TDOALocator
-	evaluator      *algorithms.WoodStrengthEvaluator
-	particleFilter *algorithms.TermiteParticleFilter
+	locator        *tdoa.TDOALocator
+	evaluator      *strength.WoodStrengthEvaluator
+	particleFilter *pf.TermiteParticleFilter
 	tunnelNetworks map[string]*models.TunnelNetwork
 	cumulativeEnergy map[string]float64
 	mu             sync.RWMutex
@@ -68,9 +72,9 @@ func NewService(cfg Config) *TDOAStrengthService {
 	}
 	return &TDOAStrengthService{
 		cfg:            cfg,
-		locator:        algorithms.NewTDOALocator(cfg.SoundSpeedWood, cfg.MinSensors, cfg.NodeMergeDistance, cfg.EdgeMaxDistance, cfg.MaxNodes),
-		evaluator:      algorithms.NewWoodStrengthEvaluator(cfg.ReferenceDensity, cfg.CriticalEnergy, cfg.RequiredSafetyFactor, cfg.DepthRatioDefault),
-		particleFilter: algorithms.NewTermiteParticleFilter(cfg.InitialParticles, cfg.MinParticles, cfg.MaxParticles, cfg.ESSIncreaseThreshold, cfg.ESSDecreaseThreshold, cfg.ProcessNoise, cfg.MeasurementNoise, cfg.ResampleThreshold, cfg.ReleaseLeadTime, cfg.PredictionHorizon),
+		locator:        tdoa.NewTDOALocator(cfg.SoundSpeedWood, cfg.MinSensors, cfg.NodeMergeDistance, cfg.EdgeMaxDistance, cfg.MaxNodes),
+		evaluator:      strength.NewWoodStrengthEvaluator(cfg.ReferenceDensity, cfg.CriticalEnergy, cfg.RequiredSafetyFactor, cfg.DepthRatioDefault),
+		particleFilter: pf.NewTermiteParticleFilter(cfg.InitialParticles, cfg.MinParticles, cfg.MaxParticles, cfg.ESSIncreaseThreshold, cfg.ESSDecreaseThreshold, cfg.ProcessNoise, cfg.MeasurementNoise, cfg.ResampleThreshold, cfg.ReleaseLeadTime, cfg.PredictionHorizon),
 		tunnelNetworks: make(map[string]*models.TunnelNetwork),
 		cumulativeEnergy: make(map[string]float64),
 		name:           "tdoa_strength",
@@ -133,7 +137,7 @@ func (s *TDOAStrengthService) process(ctx context.Context, msg *pipeline.Pipelin
 
 	measurements := s.generateSyntheticTDOA(termiteOutput, now)
 
-	x, y, z, confidence, err := s.locator.LocateSource(measurements)
+	locResult, err := s.locator.LocateSource(measurements)
 	if err != nil {
 		log.Printf("[%s] TDOA localization failed for %s: %v", s.name, sensorID, err)
 		return nil, nil
@@ -141,11 +145,11 @@ func (s *TDOAStrengthService) process(ctx context.Context, msg *pipeline.Pipelin
 
 	newNode := models.TunnelNode{
 		ID:         fmt.Sprintf("node-%s-%d", building, now.UnixMilli()),
-		PositionX:  x,
-		PositionY:  y,
-		PositionZ:  z,
+		PositionX:  locResult.X,
+		PositionY:  locResult.Y,
+		PositionZ:  locResult.Z,
 		Building:   building,
-		Confidence: confidence,
+		Confidence: locResult.Confidence,
 		FirstSeen:  now,
 		LastSeen:   now,
 		Active:     true,
@@ -183,7 +187,7 @@ func (s *TDOAStrengthService) process(ctx context.Context, msg *pipeline.Pipelin
 
 	woodType := s.getWoodTypeForBuilding(building)
 
-	strengthResult := s.evaluator.AssessStrength(
+	strengthResultMod := s.evaluator.AssessStrength(
 		sensorID,
 		building,
 		location,
@@ -192,10 +196,12 @@ func (s *TDOAStrengthService) process(ctx context.Context, msg *pipeline.Pipelin
 		woodDensity,
 		s.cfg.DepthRatioDefault,
 	)
+	strengthResult := toModelStrengthAssessment(strengthResultMod)
 	s.mu.Unlock()
 
-	pfOutput := s.particleFilter.Predict(termiteOutput.SmoothedRate)
-	pfOutput.Building = building
+	pfOutputMod := s.particleFilter.PredictSync(termiteOutput.SmoothedRate)
+	pfOutputMod.Building = building
+	pfOutput := toModelParticleFilterOutput(pfOutputMod)
 
 	return &pipeline.PipelineMessage{
 		Type: pipeline.MsgTypeTDOAStrength,
@@ -218,7 +224,7 @@ func (s *TDOAStrengthService) process(ctx context.Context, msg *pipeline.Pipelin
 	}, nil
 }
 
-func (s *TDOAStrengthService) generateSyntheticTDOA(output pipeline.TermiteOutput, baseTime time.Time) []models.TDOAMeasurement {
+func (s *TDOAStrengthService) generateSyntheticTDOA(output pipeline.TermiteOutput, baseTime time.Time) []tdoa.TDOAMeasurement {
 	sensorPositions := [][3]float64{
 		{0, 0, 0},
 		{5, 0, 2},
@@ -232,9 +238,9 @@ func (s *TDOAStrengthService) generateSyntheticTDOA(output pipeline.TermiteOutpu
 		n = len(sensorPositions)
 	}
 
-	measurements := make([]models.TDOAMeasurement, n)
+	measurements := make([]tdoa.TDOAMeasurement, n)
 	for i := 0; i < n; i++ {
-		measurements[i] = models.TDOAMeasurement{
+		measurements[i] = tdoa.TDOAMeasurement{
 			SensorID:  fmt.Sprintf("synth-tdoa-%d", i),
 			Timestamp: baseTime.Add(time.Duration(i) * time.Microsecond),
 			PosX:      sensorPositions[i][0],
@@ -245,6 +251,59 @@ func (s *TDOAStrengthService) generateSyntheticTDOA(output pipeline.TermiteOutpu
 	}
 
 	return measurements
+}
+
+func toModelStrengthAssessment(s strength.WoodStrengthAssessment) models.WoodStrengthAssessment {
+	return models.WoodStrengthAssessment{
+		SensorID:              s.SensorID,
+		Building:              s.Building,
+		Location:              s.Location,
+		WoodType:              s.WoodType,
+		CumulativeEnergy:      s.CumulativeEnergy,
+		WoodDensity:           s.WoodDensity,
+		DamageIndex:           s.DamageIndex,
+		ResidualStrengthIndex: s.ResidualStrengthIndex,
+		SafetyFactor:          s.SafetyFactor,
+		StrengthLevel:         s.StrengthLevel,
+		Timestamp:             s.Timestamp,
+	}
+}
+
+func toModelParticleFilterOutput(p pf.ParticleFilterOutput) models.ParticleFilterOutput {
+	particles := make([]models.ParticleState, len(p.Particles))
+	for i, ps := range p.Particles {
+		particles[i] = models.ParticleState{
+			ActivityLevel: ps.ActivityLevel,
+			Trend:         ps.Trend,
+			Weight:        ps.Weight,
+			Timestamp:     ps.Timestamp,
+		}
+	}
+	return models.ParticleFilterOutput{
+		Building:           p.Building,
+		Particles:          particles,
+		PredictedPeakTime:  p.PredictedPeakTime,
+		OptimalReleaseTime: p.OptimalReleaseTime,
+		CurrentActivity:    p.CurrentActivity,
+		PredictedPeak:      p.PredictedPeak,
+		Confidence:         p.Confidence,
+		ShouldReleaseNow:   p.ShouldReleaseNow,
+	}
+}
+
+func modelToTdoaMeasurement(m []models.TDOAMeasurement) []tdoa.TDOAMeasurement {
+	result := make([]tdoa.TDOAMeasurement, len(m))
+	for i, mm := range m {
+		result[i] = tdoa.TDOAMeasurement{
+			SensorID:  mm.SensorID,
+			Timestamp: mm.Timestamp,
+			PosX:      mm.PosX,
+			PosY:      mm.PosY,
+			PosZ:      mm.PosZ,
+			Amplitude: mm.Amplitude,
+		}
+	}
+	return result
 }
 
 func (s *TDOAStrengthService) GetTunnelNetwork(building string) *models.TunnelNetwork {
@@ -276,7 +335,7 @@ func (s *TDOAStrengthService) GetStrengthAssessments(building string) []models.W
 		var sensorID string
 		var loc string
 		fmt.Sscanf(key, building+"-%s", &sensorID)
-		results = append(results, s.evaluator.AssessStrength(
+		modResult := s.evaluator.AssessStrength(
 			sensorID,
 			building,
 			loc,
@@ -284,7 +343,8 @@ func (s *TDOAStrengthService) GetStrengthAssessments(building string) []models.W
 			energy,
 			woodDensity,
 			s.cfg.DepthRatioDefault,
-		))
+		)
+		results = append(results, toModelStrengthAssessment(modResult))
 	}
 
 	return results
@@ -315,7 +375,8 @@ func (s *TDOAStrengthService) GetParticleFilterOutput(building string) *models.P
 	}
 	s.mu.RUnlock()
 
-	output := s.particleFilter.Predict(activity)
-	output.Building = building
+	outputMod := s.particleFilter.PredictSync(activity)
+	outputMod.Building = building
+	output := toModelParticleFilterOutput(outputMod)
 	return &output
 }
