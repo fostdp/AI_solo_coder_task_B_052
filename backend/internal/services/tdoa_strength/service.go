@@ -19,16 +19,21 @@ type Config struct {
 	NodeMergeDistance     float64       `yaml:"node_merge_distance"`
 	EdgeMaxDistance       float64       `yaml:"edge_max_distance"`
 	MaxNodes             int           `yaml:"max_nodes"`
+	DefaultWoodType      string        `yaml:"default_wood_type"`
 	ReferenceDensity     float64       `yaml:"reference_density"`
 	CriticalEnergy       float64       `yaml:"critical_energy"`
 	RequiredSafetyFactor float64       `yaml:"required_safety_factor"`
 	DepthRatioDefault    float64       `yaml:"depth_ratio_default"`
-	ParticleCount        int           `yaml:"particle_count"`
+	MinParticles         int           `yaml:"min_particles"`
+	MaxParticles         int           `yaml:"max_particles"`
+	InitialParticles     int           `yaml:"initial_particles"`
 	ProcessNoise         float64       `yaml:"process_noise"`
 	MeasurementNoise     float64       `yaml:"measurement_noise"`
 	ResampleThreshold    float64       `yaml:"resample_threshold"`
 	ReleaseLeadTime      time.Duration `yaml:"release_lead_time"`
 	PredictionHorizon    time.Duration `yaml:"prediction_horizon"`
+	ESSIncreaseThreshold float64       `yaml:"ess_increase_threshold"`
+	ESSDecreaseThreshold float64       `yaml:"ess_decrease_threshold"`
 }
 
 type TDOAStrengthService struct {
@@ -43,11 +48,29 @@ type TDOAStrengthService struct {
 }
 
 func NewService(cfg Config) *TDOAStrengthService {
+	if cfg.DefaultWoodType == "" {
+		cfg.DefaultWoodType = "pine"
+	}
+	if cfg.MinParticles == 0 {
+		cfg.MinParticles = 50
+	}
+	if cfg.MaxParticles == 0 {
+		cfg.MaxParticles = 500
+	}
+	if cfg.InitialParticles == 0 {
+		cfg.InitialParticles = 100
+	}
+	if cfg.ESSIncreaseThreshold == 0 {
+		cfg.ESSIncreaseThreshold = 0.5
+	}
+	if cfg.ESSDecreaseThreshold == 0 {
+		cfg.ESSDecreaseThreshold = 0.9
+	}
 	return &TDOAStrengthService{
 		cfg:            cfg,
 		locator:        algorithms.NewTDOALocator(cfg.SoundSpeedWood, cfg.MinSensors, cfg.NodeMergeDistance, cfg.EdgeMaxDistance, cfg.MaxNodes),
 		evaluator:      algorithms.NewWoodStrengthEvaluator(cfg.ReferenceDensity, cfg.CriticalEnergy, cfg.RequiredSafetyFactor, cfg.DepthRatioDefault),
-		particleFilter: algorithms.NewTermiteParticleFilter(cfg.ParticleCount, cfg.ProcessNoise, cfg.MeasurementNoise, cfg.ResampleThreshold, cfg.ReleaseLeadTime, cfg.PredictionHorizon),
+		particleFilter: algorithms.NewTermiteParticleFilter(cfg.InitialParticles, cfg.MinParticles, cfg.MaxParticles, cfg.ESSIncreaseThreshold, cfg.ESSDecreaseThreshold, cfg.ProcessNoise, cfg.MeasurementNoise, cfg.ResampleThreshold, cfg.ReleaseLeadTime, cfg.PredictionHorizon),
 		tunnelNetworks: make(map[string]*models.TunnelNetwork),
 		cumulativeEnergy: make(map[string]float64),
 		name:           "tdoa_strength",
@@ -158,10 +181,13 @@ func (s *TDOAStrengthService) process(ctx context.Context, msg *pipeline.Pipelin
 
 	woodDensity := algorithms.SimulateWoodDensity(450, 968, 20)
 
+	woodType := s.getWoodTypeForBuilding(building)
+
 	strengthResult := s.evaluator.AssessStrength(
 		sensorID,
 		building,
 		location,
+		woodType,
 		s.cumulativeEnergy[energyKey],
 		woodDensity,
 		s.cfg.DepthRatioDefault,
@@ -243,6 +269,7 @@ func (s *TDOAStrengthService) GetStrengthAssessments(building string) []models.W
 	defer s.mu.RUnlock()
 
 	woodDensity := algorithms.SimulateWoodDensity(450, 968, 20)
+	woodType := s.getWoodTypeForBuilding(building)
 
 	var results []models.WoodStrengthAssessment
 	for key, energy := range s.cumulativeEnergy {
@@ -253,6 +280,7 @@ func (s *TDOAStrengthService) GetStrengthAssessments(building string) []models.W
 			sensorID,
 			building,
 			loc,
+			woodType,
 			energy,
 			woodDensity,
 			s.cfg.DepthRatioDefault,
@@ -260,6 +288,20 @@ func (s *TDOAStrengthService) GetStrengthAssessments(building string) []models.W
 	}
 
 	return results
+}
+
+func (s *TDOAStrengthService) getWoodTypeForBuilding(building string) string {
+	switch building {
+	case "应县木塔":
+		return "pine"
+	case "佛光寺":
+		return "nanmu"
+	default:
+		if s.cfg.DefaultWoodType != "" {
+			return s.cfg.DefaultWoodType
+		}
+		return "pine"
+	}
 }
 
 func (s *TDOAStrengthService) GetParticleFilterOutput(building string) *models.ParticleFilterOutput {
