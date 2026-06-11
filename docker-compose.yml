@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:1.8.10
+    container_name: ancient-wood-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+      - ./influxdb/influxdb.conf:/etc/influxdb/influxdb.conf:ro
+      - ./influxdb/init.iql:/docker-entrypoint-initdb.d/init.iql:ro
+    environment:
+      - INFLUXDB_DB=ancient_wood_monitor
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin@2024
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "SHOW DATABASES"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: ancient-wood-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ancient-wood-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "6060:6060"
+    volumes:
+      - ./backend/config/config.yaml:/app/config/config.yaml:ro
+      - ./backend/models:/app/models:ro
+      - ./frontend/public:/app/frontend:ro
+    environment:
+      - CONFIG_PATH=/app/config/config.yaml
+      - INFLUXDB_ADDR=http://influxdb:8086
+      - SERVER_PORT=8080
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  simulator:
+    build:
+      context: ./lora-simulator
+      dockerfile: Dockerfile
+    container_name: ancient-wood-simulator
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - API_URL=http://backend:8080/api/v1/lora/data
+      - DEVICE_COUNT=50
+      - REPORT_INTERVAL=1h
+      - SIMULATION_SPEED=1
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  influxdb_data:
+  prometheus_data:
