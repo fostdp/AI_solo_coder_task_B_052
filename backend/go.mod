@@ -3,11 +3,16 @@ module ancient-wood-monitor
 go 1.21
 
 require (
+	github.com/ancient-wood/bird_drive v0.0.0
+	github.com/ancient-wood/particle_filter_timing v0.0.0
+	github.com/ancient-wood/strength_calc v0.0.0
+	github.com/ancient-wood/tdoa_locator v0.0.0
 	github.com/gin-contrib/gzip v1.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/influxdata/influxdb1-client v0.0.0-20220302092344-a9ab560c08ae
 	github.com/prometheus/client_golang v1.19.0
 	github.com/spf13/viper v1.18.2
+	gonum.org/v1/gonum v0.14.0
 )
 
 require (
@@ -45,6 +50,14 @@ require (
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
+	gonum.org/v1/netlib v0.0.0-20231025120521-1d4d3ba37d3e // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+replace (
+	github.com/ancient-wood/bird_drive => ../modules/bird_drive
+	github.com/ancient-wood/particle_filter_timing => ../modules/particle_filter_timing
+	github.com/ancient-wood/strength_calc => ../modules/strength_calc
+	github.com/ancient-wood/tdoa_locator => ../modules/tdoa_locator
 )
