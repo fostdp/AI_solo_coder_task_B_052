@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>古代木结构建筑虫蛀监测与熏蒸剂智能释放系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 320px;
+            background: linear-gradient(180deg, #1a1f3a 0%, #0d1025 100%);
+            border-right: 1px solid #2a2f4a;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: linear-gradient(90deg, #4a9eff 0%, #6b5ce7 100%);
+            color: white;
+        }
+
+        .sidebar-header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .sidebar-section {
+            padding: 15px 20px;
+            border-bottom: 1px solid #2a2f4a;
+        }
+
+        .sidebar-section h3 {
+            font-size: 13px;
+            color: #8892b0;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .building-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .building-btn {
+            flex: 1;
+            padding: 8px 12px;
+            background: #2a2f4a;
+            border: 1px solid #3a3f5a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .building-btn.active {
+            background: linear-gradient(90deg, #4a9eff 0%, #6b5ce7 100%);
+            border-color: transparent;
+        }
+
+        .building-btn:hover {
+            border-color: #4a9eff;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dashed #2a2f4a;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: #8892b0;
+            font-size: 12px;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .stat-value.critical { color: #ff4757; }
+        .stat-value.warning { color: #ffa502; }
+        .stat-value.normal { color: #2ed573; }
+        .stat-value.info { color: #4a9eff; }
+
+        .alert-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            padding: 10px;
+            background: rgba(255, 71, 87, 0.1);
+            border-left: 3px solid #ff4757;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .alert-item.warning {
+            background: rgba(255, 165, 2, 0.1);
+            border-left-color: #ffa502;
+        }
+
+        .alert-item.info {
+            background: rgba(74, 158, 255, 0.1);
+            border-left-color: #4a9eff;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .alert-desc {
+            color: #8892b0;
+            font-size: 11px;
+        }
+
+        .alert-time {
+            color: #666;
+            font-size: 10px;
+            margin-top: 5px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .top-bar {
+            height: 50px;
+            background: rgba(26, 31, 58, 0.9);
+            border-bottom: 1px solid #2a2f4a;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 20px;
+        }
+
+        .top-bar-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .top-bar-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 6px 14px;
+            background: #2a2f4a;
+            border: 1px solid #3a3f5a;
+            border-radius: 5px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            background: #3a3f5a;
+            border-color: #4a9eff;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(90deg, #4a9eff 0%, #6b5ce7 100%);
+            border-color: transparent;
+        }
+
+        .action-btn.danger {
+            background: linear-gradient(90deg, #ff4757 0%, #ff6b81 100%);
+            border-color: transparent;
+        }
+
+        .viewer-container {
+            flex: 1;
+            position: relative;
+            background: radial-gradient(ellipse at center, #1a1f3a 0%, #0a0e27 100%);
+        }
+
+        #three-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .view-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(26, 31, 58, 0.9);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #2a2f4a;
+        }
+
+        .view-btn {
+            padding: 8px 16px;
+            background: #2a2f4a;
+            border: 1px solid #3a3f5a;
+            border-radius: 5px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .view-btn:hover {
+            background: #3a3f5a;
+            border-color: #4a9eff;
+        }
+
+        .view-btn.active {
+            background: #4a9eff;
+            border-color: #4a9eff;
+        }
+
+        .legend-panel {
+            position: absolute;
+            right: 20px;
+            top: 70px;
+            background: rgba(26, 31, 58, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #2a2f4a;
+            font-size: 12px;
+            min-width: 150px;
+        }
+
+        .legend-panel h4 {
+            margin-bottom: 10px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+        }
+
+        .legend-label {
+            color: #c0c0c0;
+        }
+
+        .info-panel {
+            position: absolute;
+            left: 20px;
+            top: 70px;
+            background: rgba(26, 31, 58, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #2a2f4a;
+            font-size: 12px;
+            min-width: 200px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .info-panel h4 {
+            margin-bottom: 10px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px dotted #2a2f4a;
+        }
+
+        .info-label {
+            color: #8892b0;
+        }
+
+        .info-value {
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 6px 8px;
+            background: transparent;
+            border: 1px solid #2a2f4a;
+            border-radius: 5px;
+            color: #8892b0;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            background: #4a9eff;
+            border-color: #4a9eff;
+            color: white;
+        }
+
+        .chart-container {
+            height: 150px;
+            margin-top: 10px;
+        }
+
+        canvas.chart-canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .concentration-legend {
+            position: absolute;
+            right: 20px;
+            bottom: 80px;
+            background: rgba(26, 31, 58, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #2a2f4a;
+            font-size: 12px;
+        }
+
+        .concentration-bar {
+            width: 150px;
+            height: 20px;
+            background: linear-gradient(to right, 
+                rgba(0, 255, 0, 0.3) 0%,
+                rgba(255, 255, 0, 0.5) 50%,
+                rgba(255, 0, 0, 0.7) 100%);
+            border-radius: 3px;
+            margin: 8px 0;
+        }
+
+        .concentration-labels {
+            display: flex;
+            justify-content: space-between;
+            color: #8892b0;
+            font-size: 10px;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 14, 39, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #2a2f4a;
+            border-top-color: #4a9eff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1f3a;
+            border: 1px solid #2a2f4a;
+            border-radius: 10px;
+            padding: 25px;
+            min-width: 400px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #2a2f4a;
+        }
+
+        .modal-header h3 {
+            color: #fff;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #8892b0;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #8892b0;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: #2a2f4a;
+            border: 1px solid #3a3f5a;
+            border-radius: 5px;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .modal-footer {
+            margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .status-online { background: #2ed573; box-shadow: 0 0 5px #2ed573; }
+        .status-offline { background: #666; }
+        .status-warning { background: #ffa502; box-shadow: 0 0 5px #ffa502; }
+        .status-danger { background: #ff4757; box-shadow: 0 0 5px #ff4757; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>古建筑虫蛀监测系统</h1>
+                <p>声发射·含水率·智能熏蒸</p>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>建筑选择</h3>
+                <div class="building-selector">
+                    <button class="building-btn active" data-building="应县木塔">应县木塔</button>
+                    <button class="building-btn" data-building="佛光寺">佛光寺</button>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>系统概览</h3>
+                <div class="stat-item">
+                    <span class="stat-label">声发射传感器</span>
+                    <span class="stat-value info" id="acoustic-count">50台</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">含水率传感器</span>
+                    <span class="stat-value info" id="moisture-count">40台</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">在线传感器</span>
+                    <span class="stat-value normal" id="online-count">85台</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">告警数量</span>
+                    <span class="stat-value critical" id="alert-count">3</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>最新告警</h3>
+                <div class="alert-list" id="alert-list">
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>数据分析</h3>
+                <div class="tab-buttons">
+                    <button class="tab-btn active" data-tab="acoustic">声发射</button>
+                    <button class="tab-btn" data-tab="moisture">含水率</button>
+                    <button class="tab-btn" data-tab="prediction">预测</button>
+                </div>
+                <div class="chart-container">
+                    <canvas class="chart-canvas" id="data-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="top-bar">
+                <span class="top-bar-title" id="building-title">应县木塔 - 三维监测模型</span>
+                <div class="top-bar-actions">
+                    <button class="action-btn" id="btn-show-sensors">显示传感器</button>
+                    <button class="action-btn" id="btn-show-risk">风险体素</button>
+                    <button class="action-btn" id="btn-show-concentration">浓度场</button>
+                    <button class="action-btn primary" id="btn-simulate">熏蒸模拟</button>
+                    <button class="action-btn danger" id="btn-release">释放熏蒸剂</button>
+                </div>
+            </div>
+
+            <div class="viewer-container">
+                <canvas id="three-canvas"></canvas>
+
+                <div class="info-panel" id="info-panel">
+                    <h4>选中信息</h4>
+                    <div class="info-row">
+                        <span class="info-label">组件名称</span>
+                        <span class="info-value" id="info-name">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">位置</span>
+                        <span class="info-value" id="info-location">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">声发射事件率</span>
+                        <span class="info-value" id="info-events">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">含水率</span>
+                        <span class="info-value" id="info-moisture">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">风险等级</span>
+                        <span class="info-value" id="info-risk">-</span>
+                    </div>
+                </div>
+
+                <div class="legend-panel">
+                    <h4>风险等级</h4>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 71, 87, 0.8);"></div>
+                        <span class="legend-label">严重 (≥100次/h)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 165, 2, 0.7);"></div>
+                        <span class="legend-label">高 (70-100次/h)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 234, 0, 0.6);"></div>
+                        <span class="legend-label">中 (40-70次/h)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(46, 213, 115, 0.5);"></div>
+                        <span class="legend-label">低 (20-40次/h)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(74, 158, 255, 0.3);"></div>
+                        <span class="legend-label">极低 (<20次/h)</span>
+                    </div>
+                </div>
+
+                <div class="concentration-legend" id="concentration-legend" style="display: none;">
+                    <h4>熏蒸剂浓度 (g/m³)</h4>
+                    <div class="concentration-bar"></div>
+                    <div class="concentration-labels">
+                        <span>低</span>
+                        <span>中</span>
+                        <span>高</span>
+                    </div>
+                </div>
+
+                <div class="view-controls">
+                    <button class="view-btn active" data-view="perspective">透视</button>
+                    <button class="view-btn" data-view="front">正视</button>
+                    <button class="view-btn" data-view="side">侧视</button>
+                    <button class="view-btn" data-view="top">俯视</button>
+                    <button class="view-btn" data-view="reset">复位</button>
+                </div>
+
+                <div class="loading-overlay" id="loading">
+                    <div class="loading-spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="simulate-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>熏蒸剂释放模拟</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>释放点 X</label>
+                    <input type="number" id="release-x" value="0" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>释放点 Y</label>
+                    <input type="number" id="release-y" value="0" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>释放点 Z</label>
+                    <input type="number" id="release-z" value="10" step="0.5">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>释放速率 (g/s)</label>
+                    <input type="number" id="release-rate" value="5" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>风速 (m/s)</label>
+                    <input type="number" id="wind-speed" value="2" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>风向 (度)</label>
+                    <input type="number" id="wind-direction" value="0" step="10">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>持续时间 (分钟)</label>
+                <input type="number" id="duration" value="120" step="10">
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn" onclick="closeModal()">取消</button>
+                <button class="action-btn primary" onclick="runSimulation()">开始模拟</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="./TimberModel.js"></script>
+    <script src="./VoxelRisk.js"></script>
+    <script src="./app.js"></script>
+</body>
+</html>
