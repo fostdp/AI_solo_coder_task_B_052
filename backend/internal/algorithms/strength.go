@@ -18,9 +18,25 @@ type SensorStrengthInput struct {
 	SensorID        string
 	Building        string
 	Location        string
+	WoodType        string
 	CumulativeEnergy float64
 	WoodDensity     float64
 	DepthRatio      float64
+}
+
+var woodTypeCorrection = map[string]float64{
+	"pine":   0.85,
+	"nanmu":  1.15,
+	"fir":    0.90,
+	"oak":    1.25,
+	"default": 1.0,
+}
+
+func GetWoodTypeCorrection(woodType string) float64 {
+	if corr, ok := woodTypeCorrection[woodType]; ok {
+		return corr
+	}
+	return woodTypeCorrection["default"]
 }
 
 func NewWoodStrengthEvaluator(refDensity, criticalEnergy, requiredSF, depthRatio float64) *WoodStrengthEvaluator {
@@ -32,11 +48,13 @@ func NewWoodStrengthEvaluator(refDensity, criticalEnergy, requiredSF, depthRatio
 	}
 }
 
-func (e *WoodStrengthEvaluator) AssessStrength(sensorID, building, location string, cumulativeEnergy, woodDensity, depthRatio float64) models.WoodStrengthAssessment {
+func (e *WoodStrengthEvaluator) AssessStrength(sensorID, building, location, woodType string, cumulativeEnergy, woodDensity, depthRatio float64) models.WoodStrengthAssessment {
 	damageIndex := 1.0 - (cumulativeEnergy / e.CriticalEnergy)
 	damageIndex = math.Max(0, math.Min(1, damageIndex))
 
-	residualStrengthIndex := (woodDensity / e.ReferenceDensity) * damageIndex * (1.0 - depthRatio)
+	woodCorrection := GetWoodTypeCorrection(woodType)
+
+	residualStrengthIndex := (woodDensity / e.ReferenceDensity) * damageIndex * (1.0 - depthRatio) * woodCorrection
 
 	safetyFactor := residualStrengthIndex * 3.0
 
@@ -58,6 +76,7 @@ func (e *WoodStrengthEvaluator) AssessStrength(sensorID, building, location stri
 		SensorID:              sensorID,
 		Building:              building,
 		Location:              location,
+		WoodType:              woodType,
 		CumulativeEnergy:      cumulativeEnergy,
 		WoodDensity:           woodDensity,
 		DamageIndex:           damageIndex,
@@ -71,7 +90,7 @@ func (e *WoodStrengthEvaluator) AssessStrength(sensorID, building, location stri
 func (e *WoodStrengthEvaluator) BatchAssess(sensors []SensorStrengthInput) []models.WoodStrengthAssessment {
 	results := make([]models.WoodStrengthAssessment, len(sensors))
 	for i, s := range sensors {
-		results[i] = e.AssessStrength(s.SensorID, s.Building, s.Location, s.CumulativeEnergy, s.WoodDensity, s.DepthRatio)
+		results[i] = e.AssessStrength(s.SensorID, s.Building, s.Location, s.WoodType, s.CumulativeEnergy, s.WoodDensity, s.DepthRatio)
 	}
 	return results
 }
