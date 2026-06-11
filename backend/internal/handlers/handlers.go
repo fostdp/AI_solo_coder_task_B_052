@@ -7,6 +7,7 @@ import (
 	pipe "ancient-wood-monitor/internal/pipeline"
 	"ancient-wood-monitor/internal/services"
 	lorasvc "ancient-wood-monitor/internal/services/lora"
+	birddet "ancient-wood-monitor/internal/services/bird_deterrent"
 	"math"
 	"math/rand"
 	"net/http"
@@ -17,16 +18,17 @@ import (
 )
 
 type Handler struct {
-	influxDB      *services.InfluxDBService
-	alertService  *services.AlertService
-	sensorService *services.SensorService
-	dedupService  *lorasvc.PacketDeduplicator
-	acousticEWMA  *lstm.EWMASmoother
-	moistureEWMA  *lstm.EWMASmoother
-	pipeline      *pipe.ServicePipeline
+	influxDB       *services.InfluxDBService
+	alertService   *services.AlertService
+	sensorService  *services.SensorService
+	dedupService   *lorasvc.PacketDeduplicator
+	acousticEWMA   *lstm.EWMASmoother
+	moistureEWMA   *lstm.EWMASmoother
+	pipeline       *pipe.ServicePipeline
+	birdDeterrent  *birddet.BirdDeterrentService
 }
 
-func NewHandler(influxDB *services.InfluxDBService, alertService *services.AlertService, sensorService *services.SensorService, pipeline *pipe.ServicePipeline) *Handler {
+func NewHandler(influxDB *services.InfluxDBService, alertService *services.AlertService, sensorService *services.SensorService, pipeline *pipe.ServicePipeline, birdDeterrent *birddet.BirdDeterrentService) *Handler {
 	return &Handler{
 		influxDB:      influxDB,
 		alertService:  alertService,
@@ -35,6 +37,7 @@ func NewHandler(influxDB *services.InfluxDBService, alertService *services.Alert
 		acousticEWMA:  lstm.NewEWMASmoother(0.3, 48),
 		moistureEWMA:  lstm.NewEWMASmoother(0.25, 48),
 		pipeline:      pipeline,
+		birdDeterrent: birdDeterrent,
 	}
 }
 
@@ -434,13 +437,311 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":    status,
-		"version":   "1.0.0",
+		"version":   "2.0.0",
 		"timestamp": time.Now().UTC(),
 		"services": gin.H{
-			"influxdb":   h.influxDB != nil,
-			"pipeline":   pipelineStatus,
-			"alerter":    h.alertService != nil,
-			"sensors":    h.sensorService != nil,
+			"influxdb":       h.influxDB != nil,
+			"pipeline":       pipelineStatus,
+			"alerter":        h.alertService != nil,
+			"sensors":        h.sensorService != nil,
+			"bird_deterrent": h.birdDeterrent != nil,
 		},
 	})
+}
+
+func (h *Handler) GetTunnelNetwork(c *gin.Context) {
+	building := c.Query("building")
+	if building == "" {
+		building = "应县木塔"
+	}
+
+	if h.pipeline == nil || h.pipeline.TDOAStrength == nil {
+		network := h.generateMockTunnelNetwork(building)
+		c.JSON(http.StatusOK, gin.H{"tunnel_network": network, "source": "mock"})
+		return
+	}
+
+	network := h.pipeline.TDOAStrength.GetTunnelNetwork(building)
+	if network == nil || len(network.Nodes) == 0 {
+		network = h.generateMockTunnelNetwork(building)
+		c.JSON(http.StatusOK, gin.H{"tunnel_network": network, "source": "mock"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"tunnel_network": network, "source": "live"})
+}
+
+func (h *Handler) GetStrengthAssessment(c *gin.Context) {
+	building := c.Query("building")
+	if building == "" {
+		building = "应县木塔"
+	}
+
+	if h.pipeline == nil || h.pipeline.TDOAStrength == nil {
+		assessments := h.generateMockStrengthAssessments(building)
+		c.JSON(http.StatusOK, gin.H{"assessments": assessments, "count": len(assessments), "source": "mock"})
+		return
+	}
+
+	assessments := h.pipeline.TDOAStrength.GetStrengthAssessments(building)
+	c.JSON(http.StatusOK, gin.H{"assessments": assessments, "count": len(assessments), "source": "live"})
+}
+
+func (h *Handler) GetFumigationTiming(c *gin.Context) {
+	building := c.Query("building")
+	if building == "" {
+		building = "应县木塔"
+	}
+
+	if h.pipeline == nil || h.pipeline.TDOAStrength == nil {
+		output := h.generateMockParticleFilterOutput(building)
+		c.JSON(http.StatusOK, gin.H{"particle_filter": output, "source": "mock"})
+		return
+	}
+
+	output := h.pipeline.TDOAStrength.GetParticleFilterOutput(building)
+	c.JSON(http.StatusOK, gin.H{"particle_filter": output, "source": "live"})
+}
+
+func (h *Handler) GetBirdRadar(c *gin.Context) {
+	building := c.Query("building")
+	if building == "" {
+		building = "应县木塔"
+	}
+
+	if h.birdDeterrent == nil {
+		scanData := h.generateMockBirdRadarData(building)
+		c.JSON(http.StatusOK, gin.H{"scan_data": scanData, "count": len(scanData), "source": "mock"})
+		return
+	}
+
+	scanData := h.birdDeterrent.ScanBuilding(building)
+	c.JSON(http.StatusOK, gin.H{"scan_data": scanData, "count": len(scanData), "source": "live"})
+}
+
+func (h *Handler) GetBirdDeterrentStatus(c *gin.Context) {
+	building := c.Query("building")
+	if building == "" {
+		building = "应县木塔"
+	}
+
+	if h.birdDeterrent == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"active_deterrents":  []interface{}{},
+			"recent_bird_count":  0,
+			"woodpecker_count":   0,
+			"activity_level":     "low",
+			"source":             "mock",
+		})
+		return
+	}
+
+	status := h.birdDeterrent.GetDeterrentStatus(building)
+	c.JSON(http.StatusOK, status)
+}
+
+func (h *Handler) TriggerBirdDeterrent(c *gin.Context) {
+	var req struct {
+		Building       string `json:"building"`
+		DeterrentType  string `json:"deterrent_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Building == "" {
+		req.Building = "应县木塔"
+	}
+	if req.DeterrentType == "" {
+		req.DeterrentType = "ultrasonic"
+	}
+
+	if h.birdDeterrent == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "simulated",
+			"message":   "鸟情驱赶已启动（模拟模式）",
+			"type":      req.DeterrentType,
+			"building":  req.Building,
+		})
+		return
+	}
+
+	action := h.birdDeterrent.TriggerDeterrent(req.Building, req.DeterrentType)
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "activated",
+		"action":   action,
+		"building": req.Building,
+	})
+}
+
+func (h *Handler) generateMockTunnelNetwork(building string) *models.TunnelNetwork {
+	nodes := make([]models.TunnelNode, 0)
+	edges := make([]models.TunnelEdge, 0)
+	now := time.Now()
+
+	numNodes := 8 + rand.Intn(5)
+	for i := 0; i < numNodes; i++ {
+		var x, y, z float64
+		if building == "应县木塔" {
+			angle := rand.Float64() * 2 * math.Pi
+			radius := 2 + rand.Float64()*6
+			x = math.Cos(angle) * radius
+			z = math.Sin(angle) * radius
+			y = 3 + rand.Float64()*25
+		} else {
+			x = -12 + rand.Float64()*24
+			z = -6 + rand.Float64()*12
+			y = 2 + rand.Float64()*8
+		}
+		nodes = append(nodes, models.TunnelNode{
+			ID:         "TN-" + strconv.Itoa(i+1),
+			PositionX:  x,
+			PositionY:  y,
+			PositionZ:  z,
+			Building:   building,
+			Confidence: 0.5 + rand.Float64()*0.5,
+			FirstSeen:  now.Add(-time.Duration(rand.Intn(48)) * time.Hour),
+			LastSeen:   now.Add(-time.Duration(rand.Intn(2)) * time.Hour),
+			Active:     rand.Float64() > 0.2,
+		})
+	}
+
+	for i := 0; i < len(nodes); i++ {
+		for j := i + 1; j < len(nodes); j++ {
+			dx := nodes[i].PositionX - nodes[j].PositionX
+			dy := nodes[i].PositionY - nodes[j].PositionY
+			dz := nodes[i].PositionZ - nodes[j].PositionZ
+			dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+			if dist < 3.0 {
+				edges = append(edges, models.TunnelEdge{
+					FromNodeID: nodes[i].ID,
+					ToNodeID:   nodes[j].ID,
+					Length:     dist,
+					Strength:   1.0 - dist/3.0,
+				})
+			}
+		}
+	}
+
+	return &models.TunnelNetwork{
+		Building:  building,
+		Nodes:     nodes,
+		Edges:     edges,
+		UpdatedAt: now,
+	}
+}
+
+func (h *Handler) generateMockStrengthAssessments(building string) []models.WoodStrengthAssessment {
+	sensors := h.sensorService.GetSensorsByBuilding(building)
+	assessments := make([]models.WoodStrengthAssessment, 0)
+	now := time.Now()
+
+	for _, sensor := range sensors {
+		if sensor.Type != "acoustic_emission" {
+			continue
+		}
+		cumEnergy := 5000 + rand.Float64()*30000
+		density := algorithms.SimulateWoodDensity(450, 968, 12+rand.Float64()*15)
+		depthRatio := 0.1 + rand.Float64()*0.4
+
+		damageIndex := 1.0 - cumEnergy/50000.0
+		if damageIndex < 0 {
+			damageIndex = 0
+		}
+		rsi := (density / 450.0) * damageIndex * (1.0 - depthRatio)
+		sf := rsi * 3.0
+
+		var level string
+		switch {
+		case sf >= 2.0:
+			level = "safe"
+		case sf >= 1.5:
+			level = "caution"
+		case sf >= 1.0:
+			level = "warning"
+		case sf >= 0.5:
+			level = "danger"
+		default:
+			level = "critical"
+		}
+
+		assessments = append(assessments, models.WoodStrengthAssessment{
+			SensorID:              sensor.SensorID,
+			Building:              building,
+			Location:              sensor.Location,
+			CumulativeEnergy:      cumEnergy,
+			WoodDensity:           density,
+			DamageIndex:           damageIndex,
+			ResidualStrengthIndex: rsi,
+			SafetyFactor:          sf,
+			StrengthLevel:         level,
+			Timestamp:             now,
+		})
+	}
+
+	return assessments
+}
+
+func (h *Handler) generateMockParticleFilterOutput(building string) models.ParticleFilterOutput {
+	now := time.Now()
+	peakTime := now.Add(4 * time.Hour)
+	releaseTime := peakTime.Add(-1 * time.Hour)
+	currentActivity := 40 + rand.Float64()*60
+
+	particles := make([]models.ParticleState, 20)
+	for i := range particles {
+		particles[i] = models.ParticleState{
+			ActivityLevel: currentActivity + (rand.Float64()-0.5)*30,
+			Trend:         (rand.Float64() - 0.3) * 5,
+			Weight:        1.0 / 20.0,
+			Timestamp:     now,
+		}
+	}
+
+	return models.ParticleFilterOutput{
+		Building:           building,
+		Particles:          particles,
+		PredictedPeakTime:  peakTime,
+		OptimalReleaseTime: releaseTime,
+		CurrentActivity:    currentActivity,
+		PredictedPeak:      currentActivity * 1.5,
+		Confidence:         0.6 + rand.Float64()*0.3,
+		ShouldReleaseNow:   releaseTime.Before(now.Add(30*time.Minute)),
+	}
+}
+
+func (h *Handler) generateMockBirdRadarData(building string) []models.BirdRadarData {
+	now := time.Now()
+	count := rand.Intn(6)
+	data := make([]models.BirdRadarData, count)
+
+	birdTypes := []string{"woodpecker", "sparrow", "swallow", "crow"}
+	for i := 0; i < count; i++ {
+		birdType := birdTypes[rand.Intn(len(birdTypes))]
+		if rand.Float64() > 0.3 {
+			birdType = birdTypes[rand.Intn(len(birdTypes)-1)+1]
+		}
+		activityLevel := "low"
+		if count >= 6 {
+			activityLevel = "intense"
+		} else if count >= 4 {
+			activityLevel = "high"
+		} else if count >= 2 {
+			activityLevel = "moderate"
+		}
+
+		data[i] = models.BirdRadarData{
+			ID:            "BIRD-" + building + "-" + strconv.Itoa(i+1),
+			Timestamp:     now,
+			BirdCount:     1,
+			BirdType:      birdType,
+			Direction:     rand.Float64() * 360,
+			Distance:      10 + rand.Float64()*90,
+			Altitude:      2 + rand.Float64()*28,
+			Speed:         5 + rand.Float64()*20,
+			ActivityLevel: activityLevel,
+		}
+	}
+
+	return data
 }
