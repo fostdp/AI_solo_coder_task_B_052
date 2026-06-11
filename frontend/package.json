@@ -1,0 +1,20 @@
+{
+  "name": "ancient-wood-monitor-frontend",
+  "version": "1.0.0",
+  "description": "古代木结构建筑虫蛀监测与熏蒸剂智能释放系统 - 前端",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npx http-server public -p 3000 -c-1 -o",
+    "serve": "npx http-server public -p 3000 -c-1"
+  },
+  "keywords": ["three.js", "monitoring", "ancient-architecture"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "three": "^0.158.0"
+  }
+}
