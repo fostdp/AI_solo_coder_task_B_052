@@ -63,6 +63,36 @@ var (
 		Name: "pipeline_errors_total",
 		Help: "Total number of pipeline errors",
 	}, []string{"stage"})
+
+	TDOANodesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "tdoa_tunnel_nodes_total",
+		Help: "Total number of TDOA tunnel nodes",
+	}, []string{"building"})
+
+	TDOAEdgesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "tdoa_tunnel_edges_total",
+		Help: "Total number of TDOA tunnel edges",
+	}, []string{"building"})
+
+	StrengthAssessmentsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "strength_assessments_total",
+		Help: "Total number of wood strength assessments",
+	}, []string{"building", "level"})
+
+	ParticleFilterPredictions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "particle_filter_predictions_total",
+		Help: "Total number of particle filter predictions",
+	}, []string{"building", "should_release"})
+
+	BirdRadarScansTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "bird_radar_scans_total",
+		Help: "Total number of bird radar scans",
+	}, []string{"building"})
+
+	BirdDeterrentTriggers = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "bird_deterrent_triggers_total",
+		Help: "Total number of bird deterrent triggers",
+	}, []string{"building", "type"})
 )
 
 func ObserveHTTPRequest(method, path, status string, duration time.Duration) {
