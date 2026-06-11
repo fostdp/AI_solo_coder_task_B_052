@@ -570,6 +570,70 @@
                     <canvas class="chart-canvas" id="data-chart"></canvas>
                 </div>
             </div>
+
+            <div class="sidebar-section">
+                <h3>蚁道网络</h3>
+                <div class="stat-item">
+                    <span class="stat-label">蚁道节点</span>
+                    <span class="stat-value info" id="tunnel-nodes">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">活跃节点</span>
+                    <span class="stat-value warning" id="tunnel-active">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">蚁道连线</span>
+                    <span class="stat-value info" id="tunnel-edges">0</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>木材强度</h3>
+                <div class="stat-item">
+                    <span class="stat-label">安全传感器</span>
+                    <span class="stat-value normal" id="strength-safe">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">危险传感器</span>
+                    <span class="stat-value critical" id="strength-danger">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">平均安全系数</span>
+                    <span class="stat-value info" id="strength-avg-sf">-</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>熏蒸时机</h3>
+                <div class="stat-item">
+                    <span class="stat-label">预测峰值</span>
+                    <span class="stat-value info" id="pf-peak">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">建议释放</span>
+                    <span class="stat-value warning" id="pf-release">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">置信度</span>
+                    <span class="stat-value info" id="pf-confidence">-</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>鸟情监测</h3>
+                <div class="stat-item">
+                    <span class="stat-label">检测鸟数</span>
+                    <span class="stat-value info" id="bird-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">啄木鸟</span>
+                    <span class="stat-value warning" id="bird-woodpecker">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">驱赶状态</span>
+                    <span class="stat-value normal" id="bird-deterrent-status">待机</span>
+                </div>
+            </div>
         </div>
 
         <div class="main-content">
@@ -578,9 +642,12 @@
                 <div class="top-bar-actions">
                     <button class="action-btn" id="btn-show-sensors">显示传感器</button>
                     <button class="action-btn" id="btn-show-risk">风险体素</button>
+                    <button class="action-btn" id="btn-show-tunnel">蚁道网络</button>
+                    <button class="action-btn" id="btn-show-birds">鸟情雷达</button>
                     <button class="action-btn" id="btn-show-concentration">浓度场</button>
                     <button class="action-btn primary" id="btn-simulate">熏蒸模拟</button>
                     <button class="action-btn danger" id="btn-release">释放熏蒸剂</button>
+                    <button class="action-btn" id="btn-bird-deterrent" style="background: linear-gradient(90deg, #2ed573 0%, #7bed9f 100%); border-color: transparent; color: #000;">驱鸟</button>
                 </div>
             </div>
 
@@ -710,6 +777,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="./TimberModel.js"></script>
     <script src="./VoxelRisk.js"></script>
+    <script src="./TunnelNetwork.js"></script>
+    <script src="./BirdRadar.js"></script>
     <script src="./app.js"></script>
 </body>
 </html>
