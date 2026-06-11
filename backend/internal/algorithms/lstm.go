@@ -3,6 +3,7 @@ package algorithms
 import (
 	"ancient-wood-monitor/config"
 	"ancient-wood-monitor/internal/algorithms/lstm"
+	"ancient-wood-monitor/internal/models"
 	"math"
 	"sync"
 	"time"
@@ -19,14 +20,6 @@ type LSTMPredictor struct {
 	BiasesO     []float64   `json:"biases_o"`
 	HiddenState []float64   `json:"-"`
 	CellState   []float64   `json:"-"`
-}
-
-type TermitePredictionResult struct {
-	Timestamp     time.Time `json:"timestamp"`
-	ActivityLevel float64   `json:"activity_level"`
-	RiskLevel     string    `json:"risk_level"`
-	Confidence    float64   `json:"confidence"`
-	Trend         string    `json:"trend"`
 }
 
 func NewLSTMPredictor(inputSize, hiddenSize, outputSize int) *LSTMPredictor {
@@ -147,7 +140,7 @@ func getModelService() *lstm.ModelService {
 	return modelService
 }
 
-func PredictTermiteActivity(historicalData []map[string]float64, hoursAhead int) ([]TermitePredictionResult, error) {
+func PredictTermiteActivity(historicalData []map[string]float64, hoursAhead int) ([]models.TermitePredictionResult, error) {
 	ms := getModelService()
 	ms.ResetState()
 
@@ -190,7 +183,7 @@ func PredictTermiteActivity(historicalData []map[string]float64, hoursAhead int)
 		trend /= float64(sequenceLen - 1)
 	}
 
-	results := make([]TermitePredictionResult, hoursAhead)
+	results := make([]models.TermitePredictionResult, hoursAhead)
 	now := time.Now()
 
 	baseActivity := avgEvents / 100.0
@@ -241,7 +234,7 @@ func PredictTermiteActivity(historicalData []map[string]float64, hoursAhead int)
 			}
 		}
 
-		results[i] = TermitePredictionResult{
+		results[i] = models.TermitePredictionResult{
 			Timestamp:     now.Add(time.Duration(i+1) * time.Hour),
 			ActivityLevel: activityLevel,
 			RiskLevel:     riskLevel,
