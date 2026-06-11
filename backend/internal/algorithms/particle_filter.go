@@ -17,30 +17,38 @@ type Particle struct {
 type TermiteParticleFilter struct {
 	Particles         []Particle
 	ParticleCount     int
+	MinParticles      int
+	MaxParticles      int
 	ProcessNoise      float64
 	MeasurementNoise  float64
 	ResampleThreshold float64
+	ESSIncreaseThreshold float64
+	ESSDecreaseThreshold float64
 	ReleaseLeadTime   time.Duration
 	PredictionHorizon time.Duration
 	randSource        *rand.Rand
 }
 
-func NewTermiteParticleFilter(particleCount int, processNoise, measurementNoise, resampleThreshold float64, releaseLeadTime, predictionHorizon time.Duration) *TermiteParticleFilter {
+func NewTermiteParticleFilter(initialCount, minCount, maxCount int, essIncreaseThreshold, essDecreaseThreshold, processNoise, measurementNoise, resampleThreshold float64, releaseLeadTime, predictionHorizon time.Duration) *TermiteParticleFilter {
 	src := rand.New(rand.NewSource(time.Now().UnixNano()))
-	particles := make([]Particle, particleCount)
-	for i := 0; i < particleCount; i++ {
+	particles := make([]Particle, initialCount)
+	for i := 0; i < initialCount; i++ {
 		particles[i] = Particle{
 			ActivityLevel: src.Float64() * 150.0,
 			Trend:         (src.Float64() - 0.5) * 2.0,
-			Weight:        1.0 / float64(particleCount),
+			Weight:        1.0 / float64(initialCount),
 		}
 	}
 	return &TermiteParticleFilter{
 		Particles:         particles,
-		ParticleCount:     particleCount,
+		ParticleCount:     initialCount,
+		MinParticles:      minCount,
+		MaxParticles:      maxCount,
 		ProcessNoise:      processNoise,
 		MeasurementNoise:  measurementNoise,
 		ResampleThreshold: resampleThreshold,
+		ESSIncreaseThreshold: essIncreaseThreshold,
+		ESSDecreaseThreshold: essDecreaseThreshold,
 		ReleaseLeadTime:   releaseLeadTime,
 		PredictionHorizon: predictionHorizon,
 		randSource:        src,
@@ -71,7 +79,11 @@ func (tpf *TermiteParticleFilter) Predict(observation float64) models.ParticleFi
 	ess := EffectiveSampleSize(tpf.Particles)
 	if ess < float64(tpf.ParticleCount)*tpf.ResampleThreshold {
 		tpf.Particles = SystematicResample(tpf.Particles)
+		ess = float64(tpf.ParticleCount)
 	}
+
+	essRatio := ess / float64(tpf.ParticleCount)
+	tpf.adaptParticleCount(essRatio)
 
 	var meanActivity, meanTrend float64
 	for i := range tpf.Particles {
@@ -190,4 +202,73 @@ func EffectiveSampleSize(particles []Particle) float64 {
 		return 0
 	}
 	return 1.0 / sumSq
+}
+
+func (tpf *TermiteParticleFilter) adaptParticleCount(essRatio float64) {
+	if essRatio < tpf.ESSIncreaseThreshold && tpf.ParticleCount < tpf.MaxParticles {
+		targetCount := tpf.ParticleCount * 2
+		if targetCount > tpf.MaxParticles {
+			targetCount = tpf.MaxParticles
+		}
+		tpf.increaseParticles(targetCount)
+	} else if essRatio > tpf.ESSDecreaseThreshold && tpf.ParticleCount > tpf.MinParticles {
+		targetCount := tpf.ParticleCount / 2
+		if targetCount < tpf.MinParticles {
+			targetCount = tpf.MinParticles
+		}
+		tpf.decreaseParticles(targetCount)
+	}
+}
+
+func (tpf *TermiteParticleFilter) increaseParticles(targetCount int) {
+	if targetCount <= tpf.ParticleCount {
+		return
+	}
+
+	newParticles := make([]Particle, targetCount)
+	copy(newParticles, tpf.Particles)
+
+	weight := 1.0 / float64(targetCount)
+	for i := tpf.ParticleCount; i < targetCount; i++ {
+		srcIdx := tpf.randSource.Intn(tpf.ParticleCount)
+		src := tpf.Particles[srcIdx]
+		newParticles[i] = Particle{
+			ActivityLevel: src.ActivityLevel + tpf.ProcessNoise*tpf.randSource.NormFloat64()*0.5,
+			Trend:         src.Trend + 0.01*tpf.randSource.NormFloat64()*0.5,
+			Weight:        weight,
+		}
+	}
+
+	for i := 0; i < tpf.ParticleCount; i++ {
+		newParticles[i].Weight = weight
+	}
+
+	tpf.Particles = newParticles
+	tpf.ParticleCount = targetCount
+}
+
+func (tpf *TermiteParticleFilter) decreaseParticles(targetCount int) {
+	if targetCount >= tpf.ParticleCount || targetCount <= 0 {
+		return
+	}
+
+	resampled := SystematicResample(tpf.Particles)
+	step := len(resampled) / targetCount
+
+	newParticles := make([]Particle, targetCount)
+	weight := 1.0 / float64(targetCount)
+	for i := 0; i < targetCount; i++ {
+		srcIdx := i * step
+		if srcIdx >= len(resampled) {
+			srcIdx = len(resampled) - 1
+		}
+		newParticles[i] = Particle{
+			ActivityLevel: resampled[srcIdx].ActivityLevel,
+			Trend:         resampled[srcIdx].Trend,
+			Weight:        weight,
+		}
+	}
+
+	tpf.Particles = newParticles
+	tpf.ParticleCount = targetCount
 }
