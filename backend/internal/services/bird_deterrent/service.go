@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"ancient-wood-monitor/internal/algorithms"
 	"ancient-wood-monitor/internal/models"
+
+	bird "github.com/ancient-wood/bird_drive"
 )
 
 type Config struct {
@@ -23,7 +24,7 @@ type Config struct {
 
 type BirdDeterrentService struct {
 	cfg         Config
-	simulator   *algorithms.BirdRadarSimulator
+	simulator   *bird.BirdRadarSimulator
 	scanHistory map[string][]models.BirdRadarData
 	mu          sync.RWMutex
 	cancel      context.CancelFunc
@@ -33,7 +34,7 @@ type BirdDeterrentService struct {
 func NewService(cfg Config) *BirdDeterrentService {
 	return &BirdDeterrentService{
 		cfg: cfg,
-		simulator: algorithms.NewBirdRadarSimulator(
+		simulator: bird.NewBirdRadarSimulator(
 			cfg.ScanRadius,
 			cfg.ScanInterval,
 			cfg.WoodpeckerThreshold,
@@ -46,6 +47,49 @@ func NewService(cfg Config) *BirdDeterrentService {
 		scanHistory: make(map[string][]models.BirdRadarData),
 		name:        "bird_deterrent",
 	}
+}
+
+func toModelBirdRadarData(b []bird.BirdRadarData) []models.BirdRadarData {
+	result := make([]models.BirdRadarData, len(b))
+	for i, bd := range b {
+		result[i] = models.BirdRadarData{
+			ID:            bd.ID,
+			Timestamp:     bd.Timestamp,
+			BirdCount:     bd.BirdCount,
+			BirdType:      bd.BirdType,
+			Direction:     bd.Direction,
+			Distance:      bd.Distance,
+			Altitude:      bd.Altitude,
+			Speed:         bd.Speed,
+			ActivityLevel: bd.ActivityLevel,
+		}
+	}
+	return result
+}
+
+func toModelDeterrentAction(d *bird.DeterrentAction) *models.DeterrentAction {
+	if d == nil {
+		return nil
+	}
+	return &models.DeterrentAction{
+		ID:        d.ID,
+		Type:      d.Type,
+		Building:  d.Building,
+		StartTime: d.StartTime,
+		Duration:  d.Duration,
+		Reason:    d.Reason,
+		Status:    d.Status,
+		BirdCount: d.BirdCount,
+		BirdType:  d.BirdType,
+	}
+}
+
+func toModelDeterrentActions(ds []*bird.DeterrentAction) []*models.DeterrentAction {
+	result := make([]*models.DeterrentAction, len(ds))
+	for i, d := range ds {
+		result[i] = toModelDeterrentAction(d)
+	}
+	return result
 }
 
 func (s *BirdDeterrentService) Name() string {
@@ -67,7 +111,8 @@ func (s *BirdDeterrentService) Start(ctx context.Context) {
 				return
 			case <-ticker.C:
 				for _, building := range buildings {
-					scanData := s.simulator.Scan(building)
+					scanDataMod := s.simulator.Scan(building)
+					scanData := toModelBirdRadarData(scanDataMod)
 
 					s.mu.Lock()
 					s.scanHistory[building] = append(s.scanHistory[building], scanData...)
@@ -76,7 +121,7 @@ func (s *BirdDeterrentService) Start(ctx context.Context) {
 					}
 					s.mu.Unlock()
 
-					action := s.simulator.EvaluateDeterrentNeed(scanData, building)
+					action := s.simulator.EvaluateDeterrentNeed(scanDataMod, building)
 					if action != nil {
 						log.Printf("[bird_deterrent] deterrent triggered for %s: type=%s reason=%s", building, action.Type, action.Reason)
 					}
@@ -93,11 +138,13 @@ func (s *BirdDeterrentService) Stop() {
 }
 
 func (s *BirdDeterrentService) ScanBuilding(building string) []models.BirdRadarData {
-	return s.simulator.Scan(building)
+	modData := s.simulator.Scan(building)
+	return toModelBirdRadarData(modData)
 }
 
 func (s *BirdDeterrentService) GetDeterrentStatus(building string) map[string]interface{} {
-	activeDeterrents := s.simulator.GetActiveDeterrents(building)
+	activeDeterrentsMod := s.simulator.GetActiveDeterrents(building)
+	activeDeterrents := toModelDeterrentActions(activeDeterrentsMod)
 
 	s.mu.RLock()
 	history := s.scanHistory[building]
@@ -144,21 +191,6 @@ func (s *BirdDeterrentService) GetScanHistory(building string, limit int) []mode
 }
 
 func (s *BirdDeterrentService) TriggerDeterrent(building string, deterrentType string) *models.DeterrentAction {
-	now := time.Now()
-	action := &models.DeterrentAction{
-		ID:        "DETER-" + building + "-" + now.Format("20060102150405"),
-		Type:      deterrentType,
-		Building:  building,
-		StartTime: now,
-		Duration:  s.cfg.DeterrentDuration.Seconds(),
-		Reason:    "manual trigger",
-		Status:    "active",
-		BirdCount: 0,
-		BirdType:  "",
-	}
-
-	s.simulator.ActiveDeterrents[building] = action
-	s.simulator.LastDeterrentTime[building] = now
-
-	return action
+	modAction := s.simulator.TriggerDeterrent(building, deterrentType)
+	return toModelDeterrentAction(modAction)
 }
