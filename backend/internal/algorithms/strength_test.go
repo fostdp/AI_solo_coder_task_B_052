@@ -21,7 +21,7 @@ func newTestEvaluator() *WoodStrengthEvaluator {
 func TestWoodStrengthEvaluator_AssessStrength_LightDamage(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 5000, 450, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 5000, 450, 0.3)
 
 	t.Logf("Light damage - CumulativeEnergy: %.0f, SafetyFactor: %.4f, Level: %s",
 		result.CumulativeEnergy, result.SafetyFactor, result.StrengthLevel)
@@ -42,7 +42,7 @@ func TestWoodStrengthEvaluator_AssessStrength_LightDamage(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_SevereDamage(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 45000, 450, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 45000, 450, 0.3)
 
 	t.Logf("Severe damage - CumulativeEnergy: %.0f, SafetyFactor: %.4f, Level: %s",
 		result.CumulativeEnergy, result.SafetyFactor, result.StrengthLevel)
@@ -59,7 +59,7 @@ func TestWoodStrengthEvaluator_AssessStrength_SevereDamage(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_ZeroEnergy(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 0, 450, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 0, 450, 0.3)
 
 	t.Logf("Zero energy - SafetyFactor: %.4f, Level: %s, DamageIndex: %.4f",
 		result.SafetyFactor, result.StrengthLevel, result.DamageIndex)
@@ -72,7 +72,7 @@ func TestWoodStrengthEvaluator_AssessStrength_ZeroEnergy(t *testing.T) {
 		t.Errorf("zero damage should be safe, got %s", result.StrengthLevel)
 	}
 
-	expectedSF := (450.0/testRefDensity) * 1.0 * (1.0 - 0.3) * 3.0
+	expectedSF := (450.0/testRefDensity) * 1.0 * (1.0 - 0.3) * 3.0 * 0.85
 	if math.Abs(result.SafetyFactor-expectedSF) > 1e-10 {
 		t.Errorf("zero energy safety factor = %.4f, want %.4f", result.SafetyFactor, expectedSF)
 	}
@@ -81,7 +81,7 @@ func TestWoodStrengthEvaluator_AssessStrength_ZeroEnergy(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_CriticalEnergy(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", testCriticalEnergy, 450, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", testCriticalEnergy, 450, 0.3)
 
 	t.Logf("Critical energy - SafetyFactor: %.4f, Level: %s, DamageIndex: %.4f",
 		result.SafetyFactor, result.StrengthLevel, result.DamageIndex)
@@ -102,7 +102,7 @@ func TestWoodStrengthEvaluator_AssessStrength_CriticalEnergy(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_ExceedsCriticalEnergy(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 80000, 450, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 80000, 450, 0.3)
 
 	t.Logf("Exceeds critical - SafetyFactor: %.4f, Level: %s, DamageIndex: %.4f",
 		result.SafetyFactor, result.StrengthLevel, result.DamageIndex)
@@ -119,7 +119,7 @@ func TestWoodStrengthEvaluator_AssessStrength_ExceedsCriticalEnergy(t *testing.T
 func TestWoodStrengthEvaluator_AssessStrength_LowDensity(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 10000, 250, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 10000, 250, 0.3)
 
 	t.Logf("Low density wood - Density: %.0f, SafetyFactor: %.4f, Level: %s",
 		result.WoodDensity, result.SafetyFactor, result.StrengthLevel)
@@ -132,7 +132,7 @@ func TestWoodStrengthEvaluator_AssessStrength_LowDensity(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_HighDensity(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 10000, 700, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 10000, 700, 0.3)
 
 	t.Logf("High density wood - Density: %.0f, SafetyFactor: %.4f, Level: %s",
 		result.WoodDensity, result.SafetyFactor, result.StrengthLevel)
@@ -152,16 +152,16 @@ func TestWoodStrengthEvaluator_AssessStrength_BoundaryLevels(t *testing.T) {
 		expectedMaxSF float64
 		expectedLevel string
 	}{
-		{"Safe level", 1000, 2.0, 2.1, "safe"},
-		{"Caution level", 10000, 1.5, 2.0, "caution"},
-		{"Warning level", 20000, 1.0, 1.5, "warning"},
-		{"Danger level", 35000, 0.5, 1.0, "danger"},
-		{"Critical level", 48000, 0.0, 0.5, "critical"},
+		{"Safe level", 1000, 1.7, 1.8, "safe"},
+		{"Caution level", 10000, 1.25, 1.7, "caution"},
+		{"Warning level", 20000, 0.8, 1.25, "warning"},
+		{"Danger level", 35000, 0.4, 0.85, "danger"},
+		{"Critical level", 48000, 0.0, 0.45, "critical"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := evaluator.AssessStrength("S1", "应县木塔", "一层", tc.energy, 450, 0.3)
+			result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", tc.energy, 450, 0.3)
 
 			t.Logf("%s: SF=%.4f, Level=%s", tc.name, result.SafetyFactor, result.StrengthLevel)
 
@@ -180,8 +180,8 @@ func TestWoodStrengthEvaluator_AssessStrength_BoundaryLevels(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_DepthRatio(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	shallow := evaluator.AssessStrength("S1", "应县木塔", "一层", 20000, 450, 0.1)
-	deep := evaluator.AssessStrength("S2", "应县木塔", "二层", 20000, 450, 0.5)
+	shallow := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 20000, 450, 0.1)
+	deep := evaluator.AssessStrength("S2", "应县木塔", "二层", "pine", 20000, 450, 0.5)
 
 	t.Logf("Shallow (depth=0.1): SF=%.4f", shallow.SafetyFactor)
 	t.Logf("Deep (depth=0.5): SF=%.4f", deep.SafetyFactor)
@@ -195,9 +195,9 @@ func TestWoodStrengthEvaluator_BatchAssess(t *testing.T) {
 	evaluator := newTestEvaluator()
 
 	sensors := []SensorStrengthInput{
-		{SensorID: "S1", Building: "应县木塔", Location: "一层", CumulativeEnergy: 5000, WoodDensity: 450, DepthRatio: 0.3},
-		{SensorID: "S2", Building: "应县木塔", Location: "二层", CumulativeEnergy: 40000, WoodDensity: 400, DepthRatio: 0.3},
-		{SensorID: "S3", Building: "应县木塔", Location: "三层", CumulativeEnergy: 25000, WoodDensity: 500, DepthRatio: 0.3},
+		{SensorID: "S1", Building: "应县木塔", Location: "一层", WoodType: "pine", CumulativeEnergy: 5000, WoodDensity: 450, DepthRatio: 0.3},
+		{SensorID: "S2", Building: "应县木塔", Location: "二层", WoodType: "pine", CumulativeEnergy: 40000, WoodDensity: 400, DepthRatio: 0.3},
+		{SensorID: "S3", Building: "应县木塔", Location: "三层", WoodType: "pine", CumulativeEnergy: 25000, WoodDensity: 500, DepthRatio: 0.3},
 	}
 
 	results := evaluator.BatchAssess(sensors)
@@ -283,7 +283,7 @@ func TestSimulateWoodDensity_BoundaryClamping(t *testing.T) {
 func TestWoodStrengthAssessment_FieldConsistency(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("SENSOR-001", "佛光寺", "斗拱", 15000, 480, 0.25)
+	result := evaluator.AssessStrength("SENSOR-001", "佛光寺", "斗拱", "nanmu", 15000, 480, 0.25)
 
 	if result.SensorID != "SENSOR-001" {
 		t.Errorf("SensorID = %s, want SENSOR-001", result.SensorID)
@@ -293,6 +293,9 @@ func TestWoodStrengthAssessment_FieldConsistency(t *testing.T) {
 	}
 	if result.Location != "斗拱" {
 		t.Errorf("Location = %s, want 斗拱", result.Location)
+	}
+	if result.WoodType != "nanmu" {
+		t.Errorf("WoodType = %s, want nanmu", result.WoodType)
 	}
 	if result.WoodDensity != 480 {
 		t.Errorf("WoodDensity = %.0f, want 480", result.WoodDensity)
@@ -309,7 +312,7 @@ func TestWoodStrengthAssessment_FieldConsistency(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_NegativeEnergy(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", -1000, 450, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", -1000, 450, 0.3)
 
 	t.Logf("Negative energy - DamageIndex: %.4f, SafetyFactor: %.4f",
 		result.DamageIndex, result.SafetyFactor)
@@ -322,7 +325,7 @@ func TestWoodStrengthEvaluator_AssessStrength_NegativeEnergy(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_ZeroDensity(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 10000, 0, 0.3)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 10000, 0, 0.3)
 
 	t.Logf("Zero density - SafetyFactor: %.4f, RSI: %.4f",
 		result.SafetyFactor, result.ResidualStrengthIndex)
@@ -335,7 +338,7 @@ func TestWoodStrengthEvaluator_AssessStrength_ZeroDensity(t *testing.T) {
 func TestWoodStrengthEvaluator_AssessStrength_MaxDepthRatio(t *testing.T) {
 	evaluator := newTestEvaluator()
 
-	result := evaluator.AssessStrength("S1", "应县木塔", "一层", 0, 450, 1.0)
+	result := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 0, 450, 1.0)
 
 	t.Logf("Depth ratio 1.0 - SafetyFactor: %.4f", result.SafetyFactor)
 
@@ -349,7 +352,7 @@ func TestWoodStrengthEvaluator_AllLevelsPresent(t *testing.T) {
 
 	levels := make(map[string]bool)
 	for energy := 0.0; energy <= testCriticalEnergy; energy += 1000 {
-		result := evaluator.AssessStrength("S1", "test", "test", energy, 450, 0.3)
+		result := evaluator.AssessStrength("S1", "test", "test", "pine", energy, 450, 0.3)
 		levels[result.StrengthLevel] = true
 	}
 
@@ -362,6 +365,80 @@ func TestWoodStrengthEvaluator_AllLevelsPresent(t *testing.T) {
 
 	t.Logf("All levels present: safe=%v caution=%v warning=%v danger=%v critical=%v",
 		levels["safe"], levels["caution"], levels["warning"], levels["danger"], levels["critical"])
+}
+
+func TestGetWoodTypeCorrection_StandardTypes(t *testing.T) {
+	testCases := []struct {
+		woodType string
+		expected float64
+	}{
+		{"pine", 0.85},
+		{"nanmu", 1.15},
+		{"fir", 0.90},
+		{"oak", 1.25},
+		{"default", 1.0},
+		{"unknown", 1.0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.woodType, func(t *testing.T) {
+			result := GetWoodTypeCorrection(tc.woodType)
+			if math.Abs(result-tc.expected) > 1e-10 {
+				t.Errorf("GetWoodTypeCorrection(%s) = %.4f, want %.4f",
+					tc.woodType, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestWoodStrengthEvaluator_WoodTypeEffect(t *testing.T) {
+	evaluator := newTestEvaluator()
+
+	pineResult := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 10000, 450, 0.3)
+	nanmuResult := evaluator.AssessStrength("S1", "佛光寺", "斗拱", "nanmu", 10000, 450, 0.3)
+	defaultResult := evaluator.AssessStrength("S1", "test", "test", "unknown", 10000, 450, 0.3)
+
+	t.Logf("Pine (0.85): SF=%.4f", pineResult.SafetyFactor)
+	t.Logf("Nanmu (1.15): SF=%.4f", nanmuResult.SafetyFactor)
+	t.Logf("Default (1.0): SF=%.4f", defaultResult.SafetyFactor)
+
+	if pineResult.SafetyFactor >= defaultResult.SafetyFactor {
+		t.Errorf("pine (softer wood) should have lower SF than default, pine=%.4f, default=%.4f",
+			pineResult.SafetyFactor, defaultResult.SafetyFactor)
+	}
+
+	if nanmuResult.SafetyFactor <= defaultResult.SafetyFactor {
+		t.Errorf("nanmu (harder wood) should have higher SF than default, nanmu=%.4f, default=%.4f",
+			nanmuResult.SafetyFactor, defaultResult.SafetyFactor)
+	}
+
+	expectedRatio := 1.15 / 0.85
+	actualRatio := nanmuResult.SafetyFactor / pineResult.SafetyFactor
+	if math.Abs(actualRatio-expectedRatio) > 0.01 {
+		t.Errorf("nanmu/pine SF ratio = %.4f, expected %.4f", actualRatio, expectedRatio)
+	}
+}
+
+func TestWoodStrengthEvaluator_WoodTypeSevereDamage(t *testing.T) {
+	evaluator := newTestEvaluator()
+
+	pineResult := evaluator.AssessStrength("S1", "应县木塔", "一层", "pine", 45000, 450, 0.3)
+	nanmuResult := evaluator.AssessStrength("S2", "佛光寺", "斗拱", "nanmu", 45000, 450, 0.3)
+
+	t.Logf("Pine severe damage: SF=%.4f, Level=%s", pineResult.SafetyFactor, pineResult.StrengthLevel)
+	t.Logf("Nanmu severe damage: SF=%.4f, Level=%s", nanmuResult.SafetyFactor, nanmuResult.StrengthLevel)
+
+	if pineResult.SafetyFactor >= 1.0 {
+		t.Errorf("pine severe damage SF %.4f should be < 1.0", pineResult.SafetyFactor)
+	}
+
+	if nanmuResult.SafetyFactor >= 1.0 {
+		t.Errorf("nanmu severe damage SF %.4f should be < 1.0", nanmuResult.SafetyFactor)
+	}
+
+	if nanmuResult.SafetyFactor <= pineResult.SafetyFactor {
+		t.Errorf("nanmu should have higher SF than pine at same damage level")
+	}
 }
 
 var _ = models.WoodStrengthAssessment{}
