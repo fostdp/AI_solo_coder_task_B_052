@@ -39,6 +39,7 @@ func (l *TDOALocator) LocateSource(measurements []models.TDOAMeasurement) (x, y,
 
 	A := make([][]float64, n)
 	b := make([]float64, n)
+	weights := make([]float64, n)
 
 	for i := 0; i < n; i++ {
 		m := measurements[i+1]
@@ -48,10 +49,25 @@ func (l *TDOALocator) LocateSource(measurements []models.TDOAMeasurement) (x, y,
 		dx := m.PosX - p0x
 		dy := m.PosY - p0y
 		dz := m.PosZ - p0z
+		distFromRef := math.Sqrt(dx*dx + dy*dy + dz*dz)
 		pidot := m.PosX*m.PosX + m.PosY*m.PosY + m.PosZ*m.PosZ
 
 		A[i] = []float64{2 * dx, 2 * dy, 2 * dz, 2 * di}
 		b[i] = (pidot - p0dot) - di*di
+
+		amplitude := math.Max(1.0, m.Amplitude)
+		weights[i] = amplitude / (1.0 + distFromRef*distFromRef)
+	}
+
+	totalWeight := 0.0
+	for _, w := range weights {
+		totalWeight += w
+	}
+	if totalWeight > 0 {
+		for i := range weights {
+			weights[i] /= totalWeight
+			weights[i] *= float64(n)
+		}
 	}
 
 	ATA := make([][]float64, 4)
@@ -61,24 +77,25 @@ func (l *TDOALocator) LocateSource(measurements []models.TDOAMeasurement) (x, y,
 	ATb := make([]float64, 4)
 
 	for i := 0; i < n; i++ {
+		w := weights[i]
 		for j := 0; j < 4; j++ {
 			for k := 0; k < 4; k++ {
-				ATA[j][k] += A[i][j] * A[i][k]
+				ATA[j][k] += A[i][j] * w * A[i][k]
 			}
-			ATb[j] += A[i][j] * b[i]
+			ATb[j] += A[i][j] * w * b[i]
 		}
 	}
 
 	sol, solveErr := solve4x4(ATA, ATb)
 	if solveErr != nil {
-		return 0, 0, 0, 0, errors.New("singular matrix in TDOA least squares")
+		return 0, 0, 0, 0, errors.New("singular matrix in TDOA weighted least squares")
 	}
 
 	var residual float64
 	for i := 0; i < n; i++ {
 		pred := A[i][0]*sol[0] + A[i][1]*sol[1] + A[i][2]*sol[2] + A[i][3]*sol[3]
 		diff := pred - b[i]
-		residual += diff * diff
+		residual += weights[i] * diff * diff
 	}
 	rmsResidual := math.Sqrt(residual / float64(n))
 	confidence = 1.0 / (1.0 + rmsResidual)
