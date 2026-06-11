@@ -123,15 +123,20 @@ type StrengthConfig struct {
 	CriticalEnergy      float64 `mapstructure:"critical_energy"`
 	RequiredSafetyFactor float64 `mapstructure:"required_safety_factor"`
 	DepthRatioDefault   float64 `mapstructure:"depth_ratio_default"`
+	DefaultWoodType     string  `mapstructure:"default_wood_type"`
 }
 
 type ParticleFilterConfig struct {
-	ParticleCount      int           `mapstructure:"particle_count"`
-	PredictionHorizon  time.Duration `mapstructure:"prediction_horizon"`
-	ReleaseLeadTime    time.Duration `mapstructure:"release_lead_time"`
-	ProcessNoise       float64       `mapstructure:"process_noise"`
-	MeasurementNoise   float64       `mapstructure:"measurement_noise"`
-	ResampleThreshold  float64       `mapstructure:"resample_threshold"`
+	MinParticles         int           `mapstructure:"min_particles"`
+	MaxParticles         int           `mapstructure:"max_particles"`
+	InitialParticles     int           `mapstructure:"initial_particles"`
+	PredictionHorizon    time.Duration `mapstructure:"prediction_horizon"`
+	ReleaseLeadTime      time.Duration `mapstructure:"release_lead_time"`
+	ProcessNoise         float64       `mapstructure:"process_noise"`
+	MeasurementNoise     float64       `mapstructure:"measurement_noise"`
+	ResampleThreshold    float64       `mapstructure:"resample_threshold"`
+	ESSIncreaseThreshold float64       `mapstructure:"ess_increase_threshold"`
+	ESSDecreaseThreshold float64       `mapstructure:"ess_decrease_threshold"`
 }
 
 type BirdDeterrentConfig struct {
