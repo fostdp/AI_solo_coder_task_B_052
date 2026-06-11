@@ -147,6 +147,7 @@ type WoodStrengthAssessment struct {
 	SensorID              string    `json:"sensor_id"`
 	Building              string    `json:"building"`
 	Location              string    `json:"location"`
+	WoodType              string    `json:"wood_type"`
 	CumulativeEnergy      float64   `json:"cumulative_energy"`
 	WoodDensity           float64   `json:"wood_density"`
 	DamageIndex           float64   `json:"damage_index"`
