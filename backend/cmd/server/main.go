@@ -6,6 +6,7 @@ import (
 	"ancient-wood-monitor/internal/middleware"
 	"ancient-wood-monitor/internal/pipeline"
 	"ancient-wood-monitor/internal/services"
+	birddet "ancient-wood-monitor/internal/services/bird_deterrent"
 	"context"
 	"fmt"
 	"log"
@@ -55,9 +56,23 @@ func main() {
 		log.Fatalf("Failed to start pipeline: %v", err)
 	}
 	defer servicePipeline.Stop()
-	log.Println("Service pipeline started (4 stages)")
+	log.Println("Service pipeline started (5 stages)")
 
-	handler := handlers.NewHandler(influxDBService, alertService, sensorService, servicePipeline)
+	birdDeterrentSvc := birddet.NewService(birddet.Config{
+		ScanRadius:         100.0,
+		ScanInterval:       config.AppConfig.BirdDeterrent.RadarScanInterval,
+		WoodpeckerThreshold: config.AppConfig.BirdDeterrent.WoodpeckerThreshold,
+		DeterrentDuration:  config.AppConfig.BirdDeterrent.DeterrentDuration,
+		CooldownPeriod:     config.AppConfig.BirdDeterrent.CooldownPeriod,
+		EnableUltrasonic:   config.AppConfig.BirdDeterrent.EnableUltrasonic,
+		EnablePredatorCall: config.AppConfig.BirdDeterrent.EnablePredatorCall,
+		SimulationSpeed:    config.AppConfig.BirdDeterrent.SimulationSpeed,
+	})
+	birdDeterrentSvc.Start(ctx)
+	defer birdDeterrentSvc.Stop()
+	log.Println("Bird deterrent service started")
+
+	handler := handlers.NewHandler(influxDBService, alertService, sensorService, servicePipeline, birdDeterrentSvc)
 
 	go startPprofServer(ctx)
 
@@ -100,6 +115,13 @@ func main() {
 		api.POST("/simulate/fumigation", handler.SimulateFumigation)
 
 		api.GET("/analysis/wavelet", handler.GetWaveletAnalysis)
+
+		api.GET("/tdoa/tunnel-network", handler.GetTunnelNetwork)
+		api.GET("/strength/assessment", handler.GetStrengthAssessment)
+		api.GET("/fumigation/timing", handler.GetFumigationTiming)
+		api.GET("/bird/radar", handler.GetBirdRadar)
+		api.GET("/bird/deterrent/status", handler.GetBirdDeterrentStatus)
+		api.POST("/bird/deterrent/trigger", handler.TriggerBirdDeterrent)
 	}
 
 	frontendPath := getFrontendPath()
@@ -107,6 +129,8 @@ func main() {
 	r.StaticFile("/app.js", filepath.Join(frontendPath, "app.js"))
 	r.StaticFile("/TimberModel.js", filepath.Join(frontendPath, "TimberModel.js"))
 	r.StaticFile("/VoxelRisk.js", filepath.Join(frontendPath, "VoxelRisk.js"))
+	r.StaticFile("/TunnelNetwork.js", filepath.Join(frontendPath, "TunnelNetwork.js"))
+	r.StaticFile("/BirdRadar.js", filepath.Join(frontendPath, "BirdRadar.js"))
 	r.Static("/static", frontendPath)
 
 	r.NoRoute(func(c *gin.Context) {
