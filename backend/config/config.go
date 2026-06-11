@@ -17,6 +17,10 @@ type Config struct {
 	Fumigation         FumigationConfig         `mapstructure:"fumigation"`
 	Model              ModelConfig              `mapstructure:"model"`
 	Pipeline           PipelineConfig           `mapstructure:"pipeline"`
+	TDOA               TDOAConfig               `mapstructure:"tdoa"`
+	Strength           StrengthConfig           `mapstructure:"strength"`
+	ParticleFilter     ParticleFilterConfig     `mapstructure:"particle_filter"`
+	BirdDeterrent      BirdDeterrentConfig      `mapstructure:"bird_deterrent"`
 }
 
 type ServerConfig struct {
@@ -104,6 +108,40 @@ type AlerterConfig struct {
 	CooldownPeriod    time.Duration `mapstructure:"cooldown_period"`
 	EnableWeChat      bool          `mapstructure:"enable_wechat"`
 	EnableSMS         bool          `mapstructure:"enable_sms"`
+}
+
+type TDOAConfig struct {
+	SoundSpeedWood     float64 `mapstructure:"sound_speed_wood"`
+	MinSensors         int     `mapstructure:"min_sensors"`
+	NodeMergeDistance   float64 `mapstructure:"node_merge_distance"`
+	EdgeMaxDistance     float64 `mapstructure:"edge_max_distance"`
+	MaxNodesPerBuilding int     `mapstructure:"max_nodes_per_building"`
+}
+
+type StrengthConfig struct {
+	ReferenceDensity    float64 `mapstructure:"reference_density"`
+	CriticalEnergy      float64 `mapstructure:"critical_energy"`
+	RequiredSafetyFactor float64 `mapstructure:"required_safety_factor"`
+	DepthRatioDefault   float64 `mapstructure:"depth_ratio_default"`
+}
+
+type ParticleFilterConfig struct {
+	ParticleCount      int           `mapstructure:"particle_count"`
+	PredictionHorizon  time.Duration `mapstructure:"prediction_horizon"`
+	ReleaseLeadTime    time.Duration `mapstructure:"release_lead_time"`
+	ProcessNoise       float64       `mapstructure:"process_noise"`
+	MeasurementNoise   float64       `mapstructure:"measurement_noise"`
+	ResampleThreshold  float64       `mapstructure:"resample_threshold"`
+}
+
+type BirdDeterrentConfig struct {
+	RadarScanInterval  time.Duration `mapstructure:"radar_scan_interval"`
+	WoodpeckerThreshold int          `mapstructure:"woodpecker_threshold"`
+	DeterrentDuration  time.Duration `mapstructure:"deterrent_duration"`
+	CooldownPeriod     time.Duration `mapstructure:"cooldown_period"`
+	EnableUltrasonic   bool          `mapstructure:"enable_ultrasonic"`
+	EnablePredatorCall bool          `mapstructure:"enable_predator_call"`
+	SimulationSpeed    float64       `mapstructure:"simulation_speed"`
 }
 
 func LoadConfig(path string) error {
