@@ -1,0 +1,132 @@
+CREATE DATABASE "ancient_wood_monitor" WITH DURATION 365d REPLICATION 1 SHARD DURATION 7d NAME "rp_1year"
+
+CREATE RETENTION POLICY "rp_forever" ON "ancient_wood_monitor" DURATION INF REPLICATION 1
+CREATE RETENTION POLICY "rp_30day" ON "ancient_wood_monitor" DURATION 30d REPLICATION 1
+
+USE "ancient_wood_monitor"
+
+CREATE CONTINUOUS QUERY "cq_acoustic_hourly" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    count(event_count) AS event_count,
+    mean(energy) AS avg_energy,
+    max(energy) AS max_energy,
+    mean(amplitude) AS avg_amplitude,
+    mean(frequency_peak) AS avg_frequency_peak,
+    sum(event_count) AS total_events
+  INTO "rp_forever"."acoustic_emission_hourly"
+  FROM "acoustic_emission"
+  GROUP BY time(1h), sensor_id, building, location
+END
+
+CREATE CONTINUOUS QUERY "cq_acoustic_daily" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1h FOR 24h
+BEGIN
+  SELECT
+    sum(total_events) AS total_events,
+    max(max_energy) AS max_energy,
+    mean(avg_energy) AS avg_energy,
+    max(total_events) AS peak_hour_events
+  INTO "rp_forever"."acoustic_emission_daily"
+  FROM "rp_forever"."acoustic_emission_hourly"
+  GROUP BY time(24h), sensor_id, building, location
+END
+
+CREATE CONTINUOUS QUERY "cq_acoustic_hourly_building" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    sum(event_count) AS total_events,
+    count(event_count) AS sensor_count,
+    max(energy) AS max_energy,
+    mean(energy) AS avg_energy
+  INTO "rp_forever"."acoustic_emission_hourly_by_building"
+  FROM "acoustic_emission"
+  GROUP BY time(1h), building
+END
+
+CREATE CONTINUOUS QUERY "cq_moisture_hourly" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    mean(moisture) AS avg_moisture,
+    max(moisture) AS max_moisture,
+    min(moisture) AS min_moisture,
+    mean(temperature) AS avg_temperature,
+    count(moisture) AS sample_count
+  INTO "rp_forever"."moisture_hourly"
+  FROM "wood_moisture"
+  GROUP BY time(1h), sensor_id, building, location
+END
+
+CREATE CONTINUOUS QUERY "cq_moisture_daily" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1h FOR 24h
+BEGIN
+  SELECT
+    mean(avg_moisture) AS avg_moisture,
+    max(max_moisture) AS max_moisture,
+    min(min_moisture) AS min_moisture,
+    mean(avg_temperature) AS avg_temperature
+  INTO "rp_forever"."moisture_daily"
+  FROM "rp_forever"."moisture_hourly"
+  GROUP BY time(24h), sensor_id, building, location
+END
+
+CREATE CONTINUOUS QUERY "cq_moisture_hourly_building" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    mean(moisture) AS avg_moisture,
+    max(moisture) AS max_moisture,
+    min(moisture) AS min_moisture,
+    count(moisture) AS sensor_count
+  INTO "rp_forever"."moisture_hourly_by_building"
+  FROM "wood_moisture"
+  GROUP BY time(1h), building
+END
+
+CREATE CONTINUOUS QUERY "cq_alerts_hourly" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    count(level) AS alert_count,
+    count(CASE WHEN level = 'critical' THEN 1 END) AS critical_count,
+    count(CASE WHEN level = 'high' THEN 1 END) AS high_count,
+    count(CASE WHEN level = 'medium' THEN 1 END) AS medium_count
+  INTO "rp_forever"."alerts_hourly"
+  FROM "alerts"
+  GROUP BY time(1h), building, level, channel
+END
+
+CREATE CONTINUOUS QUERY "cq_alert_triggers_hourly" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    count(alert_id) AS trigger_count,
+    mean(event_rate) AS avg_event_rate,
+    mean(moisture) AS avg_moisture,
+    count(DISTINCT sensor_id) AS affected_sensors
+  INTO "rp_forever"."alert_triggers_hourly"
+  FROM "alert_triggers"
+  GROUP BY time(1h), building, trigger_type
+END
+
+CREATE CONTINUOUS QUERY "cq_lora_packets_hourly" ON "ancient_wood_monitor"
+RESAMPLE EVERY 1m FOR 1h
+BEGIN
+  SELECT
+    count(packet_id) AS total_packets,
+    count(CASE WHEN is_duplicate = true THEN 1 END) AS duplicate_count,
+    count(DISTINCT device_id) AS active_devices,
+    mean(rssi) AS avg_rssi,
+    mean(snr) AS avg_snr
+  INTO "rp_forever"."lora_packets_hourly"
+  FROM "lora_packets"
+  GROUP BY time(1h), device_type, building
+END
+
+CREATE USER "monitor_user" WITH PASSWORD 'monitor@2024'
+GRANT READ ON "ancient_wood_monitor" TO "monitor_user"
+
+CREATE USER "admin_user" WITH PASSWORD 'admin@2024' WITH ALL PRIVILEGES
