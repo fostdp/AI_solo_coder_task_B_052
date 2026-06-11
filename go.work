@@ -1,0 +1,9 @@
+go 1.21
+
+use (
+	./backend
+	./modules/tdoa_locator
+	./modules/strength_calc
+	./modules/particle_filter_timing
+	./modules/bird_drive
+)
