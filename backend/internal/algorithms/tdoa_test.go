@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
@@ -336,5 +337,201 @@ func TestSolve4x4_Singular(t *testing.T) {
 	_, err := solve4x4(mat, rhs)
 	if err == nil {
 		t.Error("expected error for singular matrix, got nil")
+	}
+}
+
+func TestTDOALocator_WLS_WeightCalculation(t *testing.T) {
+	locator := NewTDOALocator(3300.0, 4, 0.5, 3.0, 100)
+
+	sourceX, sourceY, sourceZ := 2.0, 3.0, 1.5
+	baseTime := time.Now()
+
+	measurements := []models.TDOAMeasurement{
+		{SensorID: "S0", PosX: 0, PosY: 0, PosZ: 0, Timestamp: baseTime.Add(time.Duration(0)), Amplitude: 100.0},
+		{SensorID: "S1", PosX: 5, PosY: 0, PosZ: 0, Timestamp: baseTime.Add(time.Duration(0)), Amplitude: 80.0},
+		{SensorID: "S2", PosX: 0, PosY: 5, PosZ: 0, Timestamp: baseTime.Add(time.Duration(0)), Amplitude: 60.0},
+		{SensorID: "S3", PosX: 5, PosY: 5, PosZ: 0, Timestamp: baseTime.Add(time.Duration(0)), Amplitude: 40.0},
+	}
+
+	for i := 1; i < len(measurements); i++ {
+		dx := sourceX - measurements[i].PosX
+		dy := sourceY - measurements[i].PosY
+		dz := sourceZ - measurements[i].PosZ
+		dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+		d0 := math.Sqrt(sourceX*sourceX + sourceY*sourceY + sourceZ*sourceZ)
+		tdoa := (dist - d0) / 3300.0
+		measurements[i].Timestamp = measurements[0].Timestamp.Add(time.Duration(tdoa * float64(time.Second)))
+	}
+
+	x, y, z, confidence, err := locator.LocateSource(measurements)
+	if err != nil {
+		t.Fatalf("WLS localization failed: %v", err)
+	}
+
+	error := math.Sqrt((x-sourceX)*(x-sourceX) + (y-sourceY)*(y-sourceY) + (z-sourceZ)*(z-sourceZ))
+	t.Logf("WLS localization error: %.4f m (confidence: %.4f)", error, confidence)
+
+	if error >= 0.5 {
+		t.Errorf("WLS localization error %.4f should be < 0.5 m", error)
+	}
+
+	if confidence <= 0.8 {
+		t.Errorf("WLS confidence %.4f should be > 0.8", confidence)
+	}
+}
+
+func TestTDOALocator_WLS_HighAmplitudeWeight(t *testing.T) {
+	locator := NewTDOALocator(3300.0, 4, 0.5, 3.0, 100)
+
+	sourceX, sourceY, sourceZ := 1.0, 1.0, 0.5
+	baseTime := time.Now()
+
+	measurements := []models.TDOAMeasurement{
+		{SensorID: "S0", PosX: 0, PosY: 0, PosZ: 0, Timestamp: baseTime, Amplitude: 100.0},
+		{SensorID: "S1", PosX: 3, PosY: 0, PosZ: 0, Timestamp: baseTime, Amplitude: 90.0},
+		{SensorID: "S2", PosX: 0, PosY: 3, PosZ: 0, Timestamp: baseTime, Amplitude: 85.0},
+		{SensorID: "S3", PosX: 3, PosY: 3, PosZ: 0, Timestamp: baseTime, Amplitude: 10.0},
+	}
+
+	for i := 1; i < len(measurements); i++ {
+		dx := sourceX - measurements[i].PosX
+		dy := sourceY - measurements[i].PosY
+		dz := sourceZ - measurements[i].PosZ
+		dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+		d0 := math.Sqrt(sourceX*sourceX + sourceY*sourceY + sourceZ*sourceZ)
+		tdoa := (dist - d0) / 3300.0
+		measurements[i].Timestamp = measurements[0].Timestamp.Add(time.Duration(tdoa * float64(time.Second)))
+	}
+
+	measurements[3].Timestamp = measurements[3].Timestamp.Add(2 * time.Millisecond)
+
+	x, y, z, confidence, err := locator.LocateSource(measurements)
+	if err != nil {
+		t.Fatalf("WLS localization failed: %v", err)
+	}
+
+	error := math.Sqrt((x-sourceX)*(x-sourceX) + (y-sourceY)*(y-sourceY) + (z-sourceZ)*(z-sourceZ))
+	t.Logf("WLS with weighted low-amplitude sensor: error=%.4f m, confidence=%.4f", error, confidence)
+
+	if error >= 0.5 {
+		t.Errorf("WLS should down-weight low-amplitude noisy sensor, error=%.4f >= 0.5", error)
+	}
+}
+
+func TestTDOALocator_WLS_NoiseRobustness(t *testing.T) {
+	locator := NewTDOALocator(3300.0, 4, 0.5, 3.0, 100)
+
+	sourceX, sourceY, sourceZ := 2.5, 1.5, 1.0
+	baseTime := time.Now()
+
+	sensors := []struct {
+		x, y, z  float64
+		amplitude float64
+	}{
+		{0, 0, 0, 100.0},
+		{5, 0, 0, 95.0},
+		{0, 5, 0, 90.0},
+		{5, 5, 0, 85.0},
+		{2.5, 2.5, 2, 80.0},
+	}
+
+	noiseStdDev := 0.5e-3
+	rng := rand.New(rand.NewSource(42))
+
+	runCount := 20
+	var totalError float64
+	errorCount := 0
+
+	for run := 0; run < runCount; run++ {
+		measurements := make([]models.TDOAMeasurement, len(sensors))
+		for i, s := range sensors {
+			dx := sourceX - s.x
+			dy := sourceY - s.y
+			dz := sourceZ - s.z
+			dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+			d0 := math.Sqrt(sourceX*sourceX + sourceY*sourceY + sourceZ*sourceZ)
+			tdoa := (dist - d0) / 3300.0
+
+			noise := rng.NormFloat64() * noiseStdDev
+			if i > 0 {
+				tdoa += noise
+			}
+
+			measurements[i] = models.TDOAMeasurement{
+				SensorID:  fmt.Sprintf("S%d", i),
+				PosX:      s.x,
+				PosY:      s.y,
+				PosZ:      s.z,
+				Timestamp: baseTime.Add(time.Duration(tdoa * float64(time.Second))),
+				Amplitude: s.amplitude,
+			}
+		}
+
+		x, y, z, _, err := locator.LocateSource(measurements)
+		if err != nil {
+			errorCount++
+			continue
+		}
+
+		error := math.Sqrt((x-sourceX)*(x-sourceX) + (y-sourceY)*(y-sourceY) + (z-sourceZ)*(z-sourceZ))
+		totalError += error
+	}
+
+	avgError := totalError / float64(runCount-errorCount)
+	t.Logf("WLS average error over %d runs: %.4f m (failed: %d)", runCount, avgError, errorCount)
+	t.Logf("WLS convergence rate: %.1f%%", float64(runCount-errorCount)/float64(runCount)*100)
+
+	if avgError >= 0.5 {
+		t.Errorf("WLS average error %.4f should be < 0.5 m", avgError)
+	}
+
+	if errorCount > runCount/2 {
+		t.Errorf("WLS failed %d/%d times, too many failures", errorCount, runCount)
+	}
+}
+
+func TestTDOALocator_WLS_ConfidenceMetric(t *testing.T) {
+	locator := NewTDOALocator(3300.0, 4, 0.5, 3.0, 100)
+
+	sourceX, sourceY, sourceZ := 2.0, 2.0, 1.0
+	baseTime := time.Now()
+
+	cleanMeasurements := []models.TDOAMeasurement{
+		{SensorID: "S0", PosX: 0, PosY: 0, PosZ: 0, Timestamp: baseTime, Amplitude: 100.0},
+		{SensorID: "S1", PosX: 4, PosY: 0, PosZ: 0, Timestamp: baseTime, Amplitude: 100.0},
+		{SensorID: "S2", PosX: 0, PosY: 4, PosZ: 0, Timestamp: baseTime, Amplitude: 100.0},
+		{SensorID: "S3", PosX: 4, PosY: 4, PosZ: 0, Timestamp: baseTime, Amplitude: 100.0},
+	}
+
+	for i := 1; i < len(cleanMeasurements); i++ {
+		dx := sourceX - cleanMeasurements[i].PosX
+		dy := sourceY - cleanMeasurements[i].PosY
+		dz := sourceZ - cleanMeasurements[i].PosZ
+		dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+		d0 := math.Sqrt(sourceX*sourceX + sourceY*sourceY + sourceZ*sourceZ)
+		tdoa := (dist - d0) / 3300.0
+		cleanMeasurements[i].Timestamp = cleanMeasurements[0].Timestamp.Add(time.Duration(tdoa * float64(time.Second)))
+	}
+
+	_, _, _, cleanConfidence, _ := locator.LocateSource(cleanMeasurements)
+
+	noisyMeasurements := make([]models.TDOAMeasurement, len(cleanMeasurements))
+	copy(noisyMeasurements, cleanMeasurements)
+	for i := 1; i < len(noisyMeasurements); i++ {
+		noisyMeasurements[i].Timestamp = noisyMeasurements[i].Timestamp.Add(3 * time.Millisecond)
+	}
+
+	_, _, _, noisyConfidence, _ := locator.LocateSource(noisyMeasurements)
+
+	t.Logf("Clean data confidence: %.4f", cleanConfidence)
+	t.Logf("Noisy data confidence: %.4f", noisyConfidence)
+
+	if cleanConfidence <= noisyConfidence {
+		t.Errorf("clean data should have higher confidence than noisy data: clean=%.4f, noisy=%.4f",
+			cleanConfidence, noisyConfidence)
+	}
+
+	if cleanConfidence <= 0.8 {
+		t.Errorf("clean data confidence %.4f should be > 0.8", cleanConfidence)
 	}
 }
